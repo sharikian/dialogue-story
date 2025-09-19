@@ -9,6 +9,11 @@ type InternalMessage = DialogueMessage & {
   resolvedBgColor: string;
 };
 
+type PinnedMap = {
+  left?: InternalMessage;
+  right?: InternalMessage;
+};
+
 export function DialogueProvider({
   children,
   leftCharacters,
@@ -28,6 +33,7 @@ export function DialogueProvider({
     null
   );
   const [prevMessage, setPrevMessage] = useState<InternalMessage | null>(null);
+  const [pinned, setPinned] = useState<PinnedMap>({}); // store messages that should persist until next same-side message
   const typingTimer = useRef<number | null>(null);
   const resolvePromise = useRef<(() => void) | null>(null);
 
@@ -93,6 +99,28 @@ export function DialogueProvider({
     (msgs: InternalMessage[], idx: number) => {
       clearTypingTimer();
       const msg = msgs[idx];
+
+      // NEW: when starting a message, clear any pinned message for the SAME SIDE.
+      // This enforces: pinned (showTimes) remains visible only until the next message from the same side appears.
+      const { side: startingSide } = findCharacterEntry(msg.charecter, msg.mode);
+      if (startingSide === "left" || startingSide === "right") {
+        setPinned((p) => {
+          if (!p) return p;
+          // if pinned exists for this side, remove it
+          if (startingSide === "left" && p.left) {
+            const np = { ...p };
+            delete np.left;
+            return np;
+          }
+          if (startingSide === "right" && p.right) {
+            const np = { ...p };
+            delete np.right;
+            return np;
+          }
+          return p;
+        });
+      }
+
       setCurrentMessage(msg);
       setPrevMessage(idx > 0 ? msgs[idx - 1] : null);
       setDisplay("");
@@ -116,11 +144,24 @@ export function DialogueProvider({
     []
   );
 
+  // helper: pin message if it has showTimes true
+  const pinIfNeeded = (msg: InternalMessage | null) => {
+    if (!msg) return;
+    if (!msg.showTimes) return;
+    const { entry, side } = findCharacterEntry(msg.charecter, msg.mode);
+    if (side === "left") {
+      setPinned((p) => ({ ...p, left: { ...msg } }));
+    } else if (side === "right") {
+      setPinned((p) => ({ ...p, right: { ...msg } }));
+    }
+  };
+
   // click/keyboard to advance
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (!isActive || !activeMessages) return;
       e.preventDefault();
+
       // if currently typing -> finish instantly
       if (typing && currentMessage) {
         clearTypingTimer();
@@ -128,13 +169,18 @@ export function DialogueProvider({
         setTyping(false);
         return;
       }
+
       // else move to next message or end
       const nextIndex = index + 1;
+      // before advancing, if current has showTimes, pin it (it will stay until next same-side message)
+      pinIfNeeded(currentMessage);
+
       if (nextIndex < activeMessages.length) {
         setIndex(nextIndex);
         startTypingMessage(activeMessages, nextIndex);
         return;
       }
+
       // finished
       setActiveMessages(null);
       setIndex(0);
@@ -143,6 +189,7 @@ export function DialogueProvider({
       setDisplay("");
       setTyping(false);
       setIsActive(false);
+      setPinned({}); // clear pinned on finish
       if (onFinished) onFinished();
       if (resolvePromise.current) {
         resolvePromise.current();
@@ -165,6 +212,9 @@ export function DialogueProvider({
 
         // else move to next message or end
         const nextIndex = index + 1;
+        // before advancing, if current has showTimes, pin it (it will stay until next same-side message)
+        pinIfNeeded(currentMessage);
+
         if (nextIndex < activeMessages.length) {
           setIndex(nextIndex);
           startTypingMessage(activeMessages, nextIndex);
@@ -179,6 +229,7 @@ export function DialogueProvider({
         setDisplay("");
         setTyping(false);
         setIsActive(false);
+        setPinned({}); // clear pinned on finish
         if (onFinished) onFinished();
         if (resolvePromise.current) {
           resolvePromise.current();
@@ -213,7 +264,7 @@ export function DialogueProvider({
     return () => clearTypingTimer();
   }, [activeMessages, index, startTypingMessage]);
 
-  // the provided function
+  // the provided function (start a dialogue)
   const dialogue = useCallback(
     (messages: DialogueMessage[]) => {
       if (!messages || messages.length === 0) return Promise.resolve();
@@ -223,6 +274,7 @@ export function DialogueProvider({
       setActiveMessages(prepared);
       setIndex(0);
       setIsActive(true);
+      setPinned({}); // clear any previous pinned messages when starting a new dialogue
 
       // return a promise resolved when finished
       return new Promise<void>((res) => {
@@ -232,7 +284,7 @@ export function DialogueProvider({
     [speed]
   );
 
-  // helper: resolve character UI props for the currently shown message
+  // helper: resolve character UI props for the given message
   const resolveCurrentCharacter = (msg: InternalMessage | null) => {
     if (!msg)
       return {
@@ -250,6 +302,128 @@ export function DialogueProvider({
     };
   };
 
+  // helper: detect png (comic mode applies full-character only for pngs)
+  const isPngSrc = (src?: string) =>
+    !!src && src.toLowerCase().endsWith(".png");
+
+  // UI render helper: render a "card" (avatar / bubble) for a message
+  const renderCharacterCard = (
+    msg: InternalMessage,
+    options: {
+      forSide: "left" | "right";
+      isPinned?: boolean;
+      animate?: boolean;
+      comic?: boolean;
+    }
+  ) => {
+    const resolved = resolveCurrentCharacter(msg);
+    const animateClass = options.animate ? (isConsecutiveSame ? "animate-change" : "animate-in") : "";
+    const isComic = options.comic ?? mode === "comic";
+
+    // If comic and PNG available -> show full image + bubble positioned accordingly
+    if (isComic && isPngSrc(resolved.src)) {
+      const bubbleStyle: React.CSSProperties =
+        options.forSide === "left"
+          ? {
+              background: msg.resolvedBgColor ?? "#fff",
+              color: msg.resolvedTextColor ?? "#000",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              transformOrigin: "left bottom",
+              fontFamily:
+                'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+              top: options.isPinned ? "-5.5rem" : "-6rem",
+              right: options.isPinned ? "1rem" : "1rem",
+              pointerEvents: options.isPinned ? "none" : "auto",
+            }
+          : {
+              background: msg.resolvedBgColor ?? "#fff",
+              color: msg.resolvedTextColor ?? "#000",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              transformOrigin: "right bottom",
+              fontFamily:
+                'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+              top: options.isPinned ? "-5.5rem" : "-6rem",
+              left: options.isPinned ? "1rem" : "1rem",
+              pointerEvents: options.isPinned ? "none" : "auto",
+              textAlign: "right",
+            };
+
+      return (
+        <div
+          key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
+          className={`relative pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass} flex items-end`}
+        >
+          <img
+            src={resolved.src}
+            alt={resolved.name}
+            className="comic-character-img object-contain"
+            style={{
+              maxHeight: options.isPinned ? "clamp(4rem, 70vh, 25rem)" : "clamp(4rem, 85vh, 25rem)",
+              width: "auto",
+              filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
+            }}
+          />
+
+          <div
+            className="bubble max-w-[45%] px-3 py-2.5 rounded-[14px] absolute"
+            style={bubbleStyle}
+            aria-hidden={options.isPinned ? "false" : "false"}
+          >
+            <div
+              className={`text-[12px] font-bold opacity-90 mb-1.5 ${options.forSide === "left" ? "text-left" : "text-right"} name`}
+            >
+              {resolved.name}
+            </div>
+            <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[18px] leading-[1.2] whitespace-pre-wrap break-words`}>
+              {/* For pinned show full message (no typing), for current allow typing via `display` state */}
+              {options.isPinned ? msg.text : display}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Arcade / fallback: circular avatar + bubble
+    return (
+      <div
+        key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
+        className={`flex items-end gap-2.5 pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass}`}
+      >
+        {resolved.src ? (
+          <img
+            src={resolved.src}
+            alt={resolved.name}
+            className="character-img w-[92px] h-[92px] object-cover rounded-full"
+          />
+        ) : (
+          <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
+            {resolved.name ? resolved.name[0] : ""}
+          </div>
+        )}
+
+        <div
+          className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px]"
+          style={{
+            background: msg.resolvedBgColor ?? "#fff",
+            color: msg.resolvedTextColor ?? "#000",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+            transformOrigin: options.forSide === "left" ? "left bottom" : "right bottom",
+            fontFamily:
+              'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+            pointerEvents: options.isPinned ? "none" : "auto",
+          }}
+        >
+          <div className={`text-[12px] font-bold opacity-90 mb-1.5 ${options.forSide === "left" ? "text-left" : "text-right"} name`}>
+            {resolved.name}
+          </div>
+          <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[18px] leading-[1.2] whitespace-pre-wrap break-words`}>
+            {options.isPinned ? msg.text : display}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // UI render of message bubble(s)
   const currentChar = resolveCurrentCharacter(currentMessage);
   const previousChar = resolveCurrentCharacter(prevMessage);
@@ -260,9 +434,11 @@ export function DialogueProvider({
     prevMessage &&
     currentMessage.charecter === prevMessage.charecter;
 
-  // helper: detect png (comic mode applies full-character only for pngs)
-  const isPngSrc = (src?: string) =>
-    !!src && src.toLowerCase().endsWith(".png");
+  // prepare pinned/current render items for each side
+  const leftPinned = pinned.left ?? null;
+  const rightPinned = pinned.right ?? null;
+  const leftCurrent = currentChar.side === "left" && currentMessage ? currentMessage : null;
+  const rightCurrent = currentChar.side === "right" && currentMessage ? currentMessage : null;
 
   return (
     <DialogueContext.Provider value={{ dialogue, isActive }}>
@@ -290,169 +466,36 @@ export function DialogueProvider({
             aria-live="polite"
             style={{ maxWidth: "none" }}
           >
-            {/* Left slot */}
+            {/* Left slot: may render pinned (older) + current (typing) */}
             <div
               data-side="left"
-              className={`w-auto max-w-[48%] flex items-end min-h-[120px] ${
-                currentChar.side === "left"
+              className={`w-auto max-w-[48%] flex flex-col items-end min-h-[120px] ${
+                (leftPinned || leftCurrent)
                   ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
                   : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
               } ${isConsecutiveSame && currentChar.side === "left" ? "consecutive" : ""}`}
             >
-              {/* In comic mode: if PNG src available, show a full-character image (object-contain, larger). Otherwise fall back to arcade style. */}
-              {mode === "comic" && isPngSrc(currentChar.src) ? (
-                <div className={`relative pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"} flex items-end`}>
-                  <img
-                    src={currentChar.src}
-                    alt={currentChar.name}
-                    className="comic-character-img object-contain"
-                    style={{
-                      maxHeight: "clamp(4rem, 85vh, 18rem)",
-                      width: "auto",
-                      // visual: leave corners intact (PNG), apply drop shadow to the PNG's opaque pixels
-                      filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
-                    }}
-                  />
+              {/* pinned left (if exists) - show first so current (typing) renders after */}
+              {leftPinned ? renderCharacterCard(leftPinned, { forSide: "left", isPinned: true, animate: false, comic: mode === "comic" }) : null}
 
-                  {/* bubble positioned at top-right of image */}
-                  <div
-                    className="bubble max-w-[45%] px-3 py-2.5 rounded-[14px] absolute"
-                    style={{
-                      background: currentMessage?.resolvedBgColor ?? "#fff",
-                      color: currentMessage?.resolvedTextColor ?? "#000",
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                      transformOrigin: "left bottom",
-                      fontFamily:
-                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-                      top: "-6rem",
-                      right: "1rem",
-                      pointerEvents: "auto",
-                    }}
-                  >
-                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-left name">
-                      {currentChar.name}
-                    </div>
-                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
-                      {display}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Arcade-style fallback (unchanged) */
-                <div className={`flex items-end gap-2.5 pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
-                  {currentChar.src ? (
-                    <img
-                      src={currentChar.src}
-                      alt={currentChar.name}
-                      className="character-img w-[92px] h-[92px] object-cover rounded-full"
-                    />
-                  ) : (
-                    <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
-                      {currentChar.name ? currentChar.name[0] : ""}
-                    </div>
-                  )}
-                  <div
-                    className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px]"
-                    style={{
-                      background: currentMessage?.resolvedBgColor ?? "#fff",
-                      color: currentMessage?.resolvedTextColor ?? "#000",
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                      transformOrigin: "left bottom",
-                      fontFamily:
-                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-                    }}
-                  >
-                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-left name">
-                      {currentChar.name}
-                    </div>
-                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
-                      {display}
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* current left (typing) */}
+              {leftCurrent ? renderCharacterCard(leftCurrent, { forSide: "left", isPinned: false, animate: true, comic: mode === "comic" }) : null}
             </div>
 
-            {/* Right slot */}
+            {/* Right slot: may render pinned (older) + current (typing) */}
             <div
               data-side="right"
-              className={`w-auto max-w-[48%] flex items-end min-h-[120px] ${
-                currentChar.side === "right"
+              className={`w-auto max-w-[48%] flex flex-col items-start min-h-[120px] ${
+                (rightPinned || rightCurrent)
                   ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
                   : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
               } ${isConsecutiveSame && currentChar.side === "right" ? "consecutive" : ""}`}
             >
-              {mode === "comic" && isPngSrc(currentChar.src) ? (
-                <div className={`relative pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"} flex items-end`}>
-                  <img
-                    src={currentChar.src}
-                    alt={currentChar.name}
-                    className="comic-character-img object-contain"
-                    style={{
-                      maxHeight: "clamp(4rem, 85vh, 25rem)",
-                      width: "auto",
-                      filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
-                    }}
-                  />
+              {/* pinned right */}
+              {rightPinned ? renderCharacterCard(rightPinned, { forSide: "right", isPinned: true, animate: false, comic: mode === "comic" }) : null}
 
-                  {/* bubble positioned at top-left of image */}
-                  <div
-                    className="bubble max-w-[45%] px-3 py-2.5 rounded-[14px] absolute"
-                    style={{
-                      background: currentMessage?.resolvedBgColor ?? "#fff",
-                      color: currentMessage?.resolvedTextColor ?? "#000",
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                      transformOrigin: "right bottom",
-                      fontFamily:
-                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-                      top: "-6rem",
-                      left: "1rem",
-                      pointerEvents: "auto",
-                      textAlign: "right",
-                    }}
-                  >
-                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-right name">
-                      {currentChar.name}
-                    </div>
-                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
-                      {display}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Arcade-style fallback (unchanged) */
-                <div className={`flex items-end gap-2.5 pointer-events-auto flex-row-reverse ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
-                  {currentChar.src ? (
-                    <img
-                      src={currentChar.src}
-                      alt={currentChar.name}
-                      className="character-img w-[92px] h-[92px] object-cover rounded-full"
-                    />
-                  ) : (
-                    <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
-                      {currentChar.name ? currentChar.name[0] : ""}
-                    </div>
-                  )}
-                  <div
-                    className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px] text-right"
-                    style={{
-                      background: currentMessage?.resolvedBgColor ?? "#fff",
-                      color: currentMessage?.resolvedTextColor ?? "#000",
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                      transformOrigin: "right bottom",
-                      fontFamily:
-                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-                    }}
-                  >
-                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-right name">
-                      {currentChar.name}
-                    </div>
-                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
-                      {display}
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* current right (typing) */}
+              {rightCurrent ? renderCharacterCard(rightCurrent, { forSide: "right", isPinned: false, animate: true, comic: mode === "comic" }) : null}
             </div>
           </div>
         </div>

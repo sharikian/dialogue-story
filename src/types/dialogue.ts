@@ -11,4 +11,5 @@ export type DialogueMessage = {
   typeSpeed?: number; // ms per type letter
   textColor?: string;
   bgColor?: string;
+  showTimes?: boolean; // new: if true, keep this speaker's dialogue visible when advancing
 };
