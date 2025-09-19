@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DialogueContext } from "../context/DialogueContext";
 import type { DialogueProviderProps } from "../context/DialogueContext";
 import type { DialogueMessage, CharacterEntry } from "../types/dialogue";
-import "./Dialogue.css";
 
 type InternalMessage = DialogueMessage & {
   resolvedTypeSpeed: number;
@@ -262,50 +261,65 @@ export function DialogueProvider({
 
   return (
     <DialogueContext.Provider value={{ dialogue, isActive }}>
-      {/* when active: keep overlay + blurring outside via portal-style full-screen overlay */}
       {children}
       {isActive && (
-        <div className="dialogue-overlay" aria-hidden={!isActive}>
+        <div
+          /* overlay: moved Tailwind classes inline, kept backdrop filter raw via style */
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center"
+          aria-hidden={!isActive}
+          style={{
+            backdropFilter: "blur(4px) saturate(95%)",
+            WebkitBackdropFilter: "blur(4px)",
+          }}
+        >
+          {/* gradient (kept as separate element) */}
           <div className="dialogue-gradient" />
-          <div className="dialogue-container" aria-live="polite">
+
+          {/* container: mapped to Tailwind utilities */}
+          <div
+            className="absolute left-7 right-7 bottom-7 px-0 py-7 flex justify-between items-end pointer-events-none gap-4 z-[10000] w-auto"
+            aria-live="polite"
+            style={{ maxWidth: "none" }}
+          >
             {/* Left side */}
             <div
-              className={`dialogue-slot left ${
-                currentChar.side === "left" ? "visible" : "invisible"
-              } ${
-                isConsecutiveSame && currentChar.side === "left"
-                  ? "consecutive"
-                  : ""
-              }`}
+              /* slot styles moved to utilities; visibility handled by conditional classes */
+              className={`w-auto max-w-[48%] flex items-end min-h-[120px] ${
+                currentChar.side === "left"
+                  ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
+                  : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
+              } ${isConsecutiveSame && currentChar.side === "left" ? "consecutive" : ""}`}
               data-side="left"
             >
-              {/* NOTE: render image first in markup for both sides for deterministic order;
-                  CSS will reverse the right side visually. */}
               <div
-                className={`character-card ${
-                  isConsecutiveSame ? "animate-change" : "animate-in"
-                }`}
+                className={`flex items-end gap-2.5 pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"}`}
               >
                 {currentChar.src ? (
                   <img
                     src={currentChar.src}
                     alt={currentChar.name}
-                    className="character-img"
+                    className="character-img w-[92px] h-[92px] object-cover rounded-full"
                   />
                 ) : (
-                  <div className="character-fallback">
-                    {currentChar.name[0]}
+                  <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
+                    {currentChar.name ? currentChar.name[0] : ""}
                   </div>
                 )}
                 <div
-                  className="bubble"
+                  className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px]"
                   style={{
                     background: currentMessage?.resolvedBgColor ?? "#fff",
                     color: currentMessage?.resolvedTextColor ?? "#000",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                    transformOrigin: "left bottom",
+                    fontFamily:
+                      'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
                   }}
                 >
-                  <div className="name">{currentChar.name}</div>
-                  <div className={`text ${typing ? "typing" : "done"}`}>
+                  <div className="text-[12px] font-bold opacity-90 mb-1.5 text-left name">
+                    {currentChar.name}
+                  </div>
+                  <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
                     {display}
                   </div>
                 </div>
@@ -314,41 +328,43 @@ export function DialogueProvider({
 
             {/* Right side */}
             <div
-              className={`dialogue-slot right ${
-                currentChar.side === "right" ? "visible" : "invisible"
-              } ${
-                isConsecutiveSame && currentChar.side === "right"
-                  ? "consecutive"
-                  : ""
-              }`}
+              className={`w-auto max-w-[48%] flex items-end min-h-[120px] ${
+                currentChar.side === "right"
+                  ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
+                  : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
+
+              } ${isConsecutiveSame && currentChar.side === "right" ? "consecutive" : ""}`}
               data-side="right"
             >
-              {/* same markup: image first, bubble second. CSS (row-reverse) will place image to the right visually */}
               <div
-                className={`character-card ${
-                  isConsecutiveSame ? "animate-change" : "animate-in"
-                }`}
+                className={`flex items-end gap-2.5 pointer-events-auto flex-row-reverse ${isConsecutiveSame ? "animate-change" : "animate-in"}`}
               >
                 {currentChar.src ? (
                   <img
                     src={currentChar.src}
                     alt={currentChar.name}
-                    className="character-img"
+                    className="character-img w-[92px] h-[92px] object-cover rounded-full"
                   />
                 ) : (
-                  <div className="character-fallback">
-                    {currentChar.name[0]}
+                  <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
+                    {currentChar.name ? currentChar.name[0] : ""}
                   </div>
                 )}
                 <div
-                  className="bubble"
+                  className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px] text-right"
                   style={{
                     background: currentMessage?.resolvedBgColor ?? "#fff",
                     color: currentMessage?.resolvedTextColor ?? "#000",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                    transformOrigin: "right bottom",
+                    fontFamily:
+                      'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
                   }}
                 >
-                  <div className="name">{currentChar.name}</div>
-                  <div className={`text ${typing ? "typing" : "done"}`}>
+                  <div className="text-[12px] font-bold opacity-90 mb-1.5 text-right name">
+                    {currentChar.name}
+                  </div>
+                  <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
                     {display}
                   </div>
                 </div>
