@@ -21,6 +21,7 @@ export function DialogueProvider({
   speed = 35,
   onFinished,
   mode = "arcade", // new prop, default keeps arcade behaviour
+  rtl = false, // new prop, default false
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<
     InternalMessage[] | null
@@ -317,36 +318,54 @@ export function DialogueProvider({
     }
   ) => {
     const resolved = resolveCurrentCharacter(msg);
+
+    // compute effective alignment depending on rtl flag.
+    // NOTE: we do NOT move the character avatar positions — only the bubble/text/name alignment and bubble offset.
+    const effectiveTextAlignClass = (() => {
+      // in LTR: left -> text-left, right -> text-right
+      // in RTL: left -> text-right, right -> text-left (flip only message/name alignment)
+      if (!rtl) return options.forSide === "left" ? "text-left" : "text-right";
+      return options.forSide === "left" ? "text-right" : "text-left";
+    })();
+
+    const transformOrigin = (() => {
+      // mirror transform origin for bubble animations when rtl is true
+      if (!rtl) return options.forSide === "left" ? "left bottom" : "right bottom";
+      return options.forSide === "left" ? "right bottom" : "left bottom";
+    })();
+
     const animateClass = options.animate ? (isConsecutiveSame ? "animate-change" : "animate-in") : "";
     const isComic = options.comic ?? mode === "comic";
 
     // If comic and PNG available -> show full image + bubble positioned accordingly
     if (isComic && isPngSrc(resolved.src)) {
-      const bubbleStyle: React.CSSProperties =
+      // For LTR:
+      //  - left side bubble uses `right: X` (bubble positioned inward toward center)
+      //  - right side bubble uses `left: X`
+      // For RTL we invert those bubble offsets so the bubble still points inward but text alignment flips.
+      const posOffset =
         options.forSide === "left"
-          ? {
-              background: msg.resolvedBgColor ?? "#fff",
-              color: msg.resolvedTextColor ?? "#000",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              transformOrigin: "left bottom",
-              fontFamily:
-                'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-              top: options.isPinned ? "-5.5rem" : "-6rem",
-              right: options.isPinned ? "1rem" : "1rem",
-              pointerEvents: options.isPinned ? "none" : "auto",
-            }
-          : {
-              background: msg.resolvedBgColor ?? "#fff",
-              color: msg.resolvedTextColor ?? "#000",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              transformOrigin: "right bottom",
-              fontFamily:
-                'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-              top: options.isPinned ? "-5.5rem" : "-6rem",
-              left: options.isPinned ? "1rem" : "1rem",
-              pointerEvents: options.isPinned ? "none" : "auto",
-              textAlign: "right",
-            };
+          ? rtl
+            ? { left: options.isPinned ? "1rem" : "1rem" }
+            : { right: options.isPinned ? "1rem" : "1rem" }
+          : rtl
+          ? { right: options.isPinned ? "1rem" : "1rem" }
+          : { left: options.isPinned ? "1rem" : "1rem" };
+
+      const bubbleStyle: React.CSSProperties =
+        {
+          background: msg.resolvedBgColor ?? "#fff",
+          color: msg.resolvedTextColor ?? "#000",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+          transformOrigin,
+          fontFamily:
+            'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+          top: options.isPinned ? "-5.5rem" : "-6rem",
+          pointerEvents: options.isPinned ? "none" : "auto",
+          ...posOffset,
+          // ensure RTL mode doesn't unexpectedly flip text direction of bubble contents:
+          direction: rtl ? "rtl" : "ltr",
+        };
 
       return (
         <div
@@ -369,9 +388,7 @@ export function DialogueProvider({
             style={bubbleStyle}
             aria-hidden={options.isPinned ? "false" : "false"}
           >
-            <div
-              className={`text-[12px] font-bold opacity-90 mb-1.5 ${options.forSide === "left" ? "text-left" : "text-right"} name`}
-            >
+            <div className={`text-[12px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>
               {resolved.name}
             </div>
             <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[18px] leading-[1.2] whitespace-pre-wrap break-words`}>
@@ -384,6 +401,14 @@ export function DialogueProvider({
     }
 
     // Arcade / fallback: circular avatar + bubble
+    const arcadeTransformOrigin = rtl
+      ? options.forSide === "left"
+        ? "right bottom"
+        : "left bottom"
+      : options.forSide === "left"
+      ? "left bottom"
+      : "right bottom";
+
     return (
       <div
         key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
@@ -407,13 +432,14 @@ export function DialogueProvider({
             background: msg.resolvedBgColor ?? "#fff",
             color: msg.resolvedTextColor ?? "#000",
             boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-            transformOrigin: options.forSide === "left" ? "left bottom" : "right bottom",
+            transformOrigin: arcadeTransformOrigin,
             fontFamily:
               'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
             pointerEvents: options.isPinned ? "none" : "auto",
+            direction: rtl ? "rtl" : "ltr",
           }}
         >
-          <div className={`text-[12px] font-bold opacity-90 mb-1.5 ${options.forSide === "left" ? "text-left" : "text-right"} name`}>
+          <div className={`${effectiveTextAlignClass} text-[12px] font-bold opacity-90 mb-1.5 name`}>
             {resolved.name}
           </div>
           <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[18px] leading-[1.2] whitespace-pre-wrap break-words`}>

@@ -8,16 +8,15 @@ const AppInner: React.FC = () => {
 
   const start = async () => {
     const messages: DialogueMessage[] = [
-      { text: "Hey! Welcome to the camp.", charecter: "Eddy", mode: "happy", typeSpeed: 30, textColor: "#fff", bgColor: "#1f6feb", showTimes: true },
-      { text: "We need you to defend the village.", charecter: "Ali", typeSpeed: 28, textColor: "#000", bgColor: "#ffd27f" },
-      { text: "On it — I'll get the catapult ready.", charecter: "Eddy", mode: "angry", typeSpeed: 32, textColor: "#fff", bgColor: "#d9534f" },
-      { text: "Good. I'll watch the flank.", charecter: "Ali", typeSpeed: 28 },
-      // consecutive Eddy messages to trigger "change" animation:
-      { text: "Loading ammunition...", charecter: "Eddy", typeSpeed: 18 },
-      { text: "Almost done!", charecter: "Eddy", typeSpeed: 10 },
+      { text: "سلام! به اردو خوش آمدی.", charecter: "Eddy", mode: "happy", typeSpeed: 30, textColor: "#fff", bgColor: "#1f6feb", showTimes: true },
+      { text: "ما بهت نیاز داریم تا از روستا دفاع کنی.", charecter: "Ali", typeSpeed: 28, textColor: "#000", bgColor: "#ffd27f" },
+      { text: "باشه — من منجنیق رو آماده می‌کنم.", charecter: "Eddy", mode: "angry", typeSpeed: 32, textColor: "#fff", bgColor: "#d9534f" },
+      { text: "خوبه. من از جناح مراقبت می‌کنم.", charecter: "Ali", typeSpeed: 28 },
+      { text: "دارم مهمات رو بارگذاری می‌کنم...", charecter: "Eddy", typeSpeed: 18 },
+      { text: "تقریباً تمومه!", charecter: "Eddy", typeSpeed: 10 },
     ];
 
-    await dialogue(messages); // optional await; provider will call onFinished prop too
+    await dialogue(messages);
     console.log("dialog finished");
   };
 
@@ -45,7 +44,7 @@ export default function App() {
   };
 
   return (
-    <DialogueProvider leftCharacters={left} rightCharacters={right} mode="comic" speed={40} onFinished={handleFinished}>
+    <DialogueProvider leftCharacters={left} rightCharacters={right} mode="comic" speed={40} onFinished={handleFinished} rtl={true}>
       <AppInner />
     </DialogueProvider>
   );

@@ -8,6 +8,7 @@ export type DialogueProviderProps = {
   speed?: number; // default ms per type letters
   onFinished?: () => void; // called after full dialogue finishes
   mode?: "arcade" | "comic"; // "arcade" = original circular avatars; "comic" = full-character PNGs with comic-style bubbles
+  rtl?: boolean; // when true, message/name alignment and bubble sides are displayed in RTL
 };
 
 export type DialogueContextValue = {
