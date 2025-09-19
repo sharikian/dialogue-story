@@ -358,8 +358,9 @@ export function DialogueProvider({
           color: msg.resolvedTextColor ?? "#000",
           boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
           transformOrigin,
-          fontFamily:
-            'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+          fontFamily: rtl
+            ? '"Vazirmatn", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial'
+            : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
           top: options.isPinned ? "-5.5rem" : "-6rem",
           pointerEvents: options.isPinned ? "none" : "auto",
           ...posOffset,
@@ -433,8 +434,9 @@ export function DialogueProvider({
             color: msg.resolvedTextColor ?? "#000",
             boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
             transformOrigin: arcadeTransformOrigin,
-            fontFamily:
-              'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+            fontFamily: rtl
+              ? '"Vazirmatn", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial'
+              : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
             pointerEvents: options.isPinned ? "none" : "auto",
             direction: rtl ? "rtl" : "ltr",
           }}
