@@ -1,0 +1,168 @@
+/* Full-screen overlay that blurs the app and shows gradient */
+.dialogue-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: auto;
+  /* slight background transparency to dim app */
+  backdrop-filter: blur(4px) saturate(95%);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* soft black gradient from bottom to center */
+.dialogue-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.0) 60%);
+  pointer-events: none;
+}
+
+/* central container for slots */
+.dialogue-container {
+  position: relative;
+  width: 100%;
+  max-width: 1100px;
+  padding: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none; /* clicks are captured by overlay outer (we rely on global click handler) */
+  gap: 18px;
+  z-index: 10000;
+}
+
+/* slot left/right to arrange characters */
+.dialogue-slot {
+  width: 48%;
+  display: flex;
+  align-items: flex-end;
+  min-height: 120px;
+}
+
+.dialogue-slot.invisible {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(18px);
+  transition: opacity 180ms ease, transform 260ms ease;
+}
+
+.dialogue-slot.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition: opacity 200ms ease, transform 260ms cubic-bezier(.2,.9,.2,1);
+}
+
+/* character card: image + bubble */
+.character-card {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+/* left layout: image left, bubble right; right layout reversed with flex-direction */
+.dialogue-slot.right .character-card {
+  flex-direction: row-reverse;
+}
+
+/* basic image */
+.character-img {
+  width: 92px;
+  height: 92px;
+  object-fit: cover;
+  border-radius: 50%;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  transform-origin: center bottom;
+  transition: transform 280ms cubic-bezier(.2,.9,.2,1);
+}
+
+/* fallback circular letter if no image */
+.character-fallback {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  background: #ddd;
+}
+
+/* bubble styling */
+.bubble {
+  max-width: 65%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  transform-origin: left bottom;
+  transition: transform 260ms cubic-bezier(.2,.9,.2,1), box-shadow 160ms;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* name label above text */
+.name {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.9;
+  margin-bottom: 6px;
+}
+
+/* text area */
+.text {
+  font-size: 18px;
+  line-height: 1.2;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* typing caret effect */
+.text.typing::after {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 1em;
+  background: currentColor;
+  margin-left: 3px;
+  animation: blink 900ms steps(1) infinite;
+  vertical-align: bottom;
+}
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* animations: when a message appears */
+.animate-in {
+  animation: popIn 420ms cubic-bezier(.2,.9,.2,1);
+}
+@keyframes popIn {
+  0% { transform: translateY(26px) scale(0.88) rotate(-6deg); opacity: 0; }
+  60% { transform: translateY(-6px) scale(1.04) rotate(3deg); opacity: 1; }
+  100% { transform: translateY(0) scale(1) rotate(0deg); }
+}
+
+/* special when same speaker speaks again: more pronounced pop from bottom (like clash of clans) */
+.animate-change {
+  animation: changePop 520ms cubic-bezier(.2,.9,.2,1);
+}
+@keyframes changePop {
+  0% { transform: translateY(36px) scale(0.8) rotate(-10deg); opacity: 0; }
+  50% { transform: translateY(-10px) scale(1.08) rotate(6deg); opacity: 1; }
+  100% { transform: translateY(0) scale(1) rotate(0deg); }
+}
+
+/* small extra effect for image scaling on update */
+.consecutive .character-img {
+  transform: translateY(0) scale(1.06) rotate(-2deg);
+}
+
+/* responsive tweak: small screens stack */
+@media (max-width: 720px) {
+  .dialogue-container { padding: 10px; gap: 6px; max-width: 100%; }
+  .character-img { width: 72px; height: 72px; }
+  .bubble { max-width: 70%; font-size: 16px; padding: 10px 12px; }
+}
