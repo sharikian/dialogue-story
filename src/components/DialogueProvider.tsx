@@ -203,6 +203,8 @@ export function DialogueProvider({
               } ${isConsecutiveSame && currentChar.side === "left" ? "consecutive" : ""}`}
               data-side="left"
             >
+              {/* NOTE: render image first in markup for both sides for deterministic order;
+                  CSS will reverse the right side visually. */}
               <div className={`character-card ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
                 {currentChar.src ? (
                   <img src={currentChar.src} alt={currentChar.name} className="character-img" />
@@ -229,7 +231,13 @@ export function DialogueProvider({
               } ${isConsecutiveSame && currentChar.side === "right" ? "consecutive" : ""}`}
               data-side="right"
             >
+              {/* same markup: image first, bubble second. CSS (row-reverse) will place image to the right visually */}
               <div className={`character-card ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
+                {currentChar.src ? (
+                  <img src={currentChar.src} alt={currentChar.name} className="character-img" />
+                ) : (
+                  <div className="character-fallback">{currentChar.name[0]}</div>
+                )}
                 <div
                   className="bubble"
                   style={{
@@ -240,11 +248,6 @@ export function DialogueProvider({
                   <div className="name">{currentChar.name}</div>
                   <div className={`text ${typing ? "typing" : "done"}`}>{display}</div>
                 </div>
-                {currentChar.src ? (
-                  <img src={currentChar.src} alt={currentChar.name} className="character-img" />
-                ) : (
-                  <div className="character-fallback">{currentChar.name[0]}</div>
-                )}
               </div>
             </div>
           </div>

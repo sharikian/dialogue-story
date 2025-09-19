@@ -20,23 +20,30 @@
   pointer-events: none;
 }
 
-/* central container for slots */
+/* central container for slots
+   Changed to be positioned edge-to-edge (with 28px inset) so left/right slots
+   are anchored to page edges instead of being centered inside a fixed max-width. */
 .dialogue-container {
-  position: relative;
-  width: 100%;
-  max-width: 1100px;
-  padding: 28px;
+  position: absolute;       /* anchor within overlay */
+  left: 28px;               /* same horizontal padding used before */
+  right: 28px;
+  bottom: 28px;             /* keep it at the bottom */
+  padding: 28px 0;          /* vertical padding retained, horizontal handled by left/right */
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   pointer-events: none; /* clicks are captured by overlay outer (we rely on global click handler) */
   gap: 18px;
   z-index: 10000;
+  max-width: none;         /* remove max-width so it spans the viewport inset */
+  width: auto;
 }
 
 /* slot left/right to arrange characters */
 .dialogue-slot {
-  width: 48%;
+  /* allow slot to size to its content up to ~48% to keep bubbles reasonable on wide screens */
+  width: auto;
+  max-width: 48%;
   display: flex;
   align-items: flex-end;
   min-height: 120px;
@@ -162,7 +169,14 @@
 
 /* responsive tweak: small screens stack */
 @media (max-width: 720px) {
-  .dialogue-container { padding: 10px; gap: 6px; max-width: 100%; }
+  /* on small screens we keep the container centered and compact */
+  .dialogue-container {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    padding: 10px 0;
+    gap: 6px;
+  }
   .character-img { width: 72px; height: 72px; }
   .bubble { max-width: 70%; font-size: 16px; padding: 10px 12px; }
 }
