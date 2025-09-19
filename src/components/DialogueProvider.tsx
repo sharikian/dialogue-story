@@ -149,7 +149,7 @@ export function DialogueProvider({
   const pinIfNeeded = (msg: InternalMessage | null) => {
     if (!msg) return;
     if (!msg.showTimes) return;
-    const { entry, side } = findCharacterEntry(msg.charecter, msg.mode);
+    const { side } = findCharacterEntry(msg.charecter, msg.mode);
     if (side === "left") {
       setPinned((p) => ({ ...p, left: { ...msg } }));
     } else if (side === "right") {
@@ -292,7 +292,7 @@ export function DialogueProvider({
         name: "",
         src: "",
         side: "left",
-        resolvedMode: msg?.mode ?? "default",
+        resolvedMode: "default",
       };
     const { entry, side } = findCharacterEntry(msg.charecter, msg.mode);
     return {
@@ -454,7 +454,7 @@ export function DialogueProvider({
 
   // UI render of message bubble(s)
   const currentChar = resolveCurrentCharacter(currentMessage);
-  const previousChar = resolveCurrentCharacter(prevMessage);
+  // const previousChar = resolveCurrentCharacter(prevMessage);
 
   // decide animation class: if previous message was same character name => consecutive animation
   const isConsecutiveSame =

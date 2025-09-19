@@ -1,18 +1,38 @@
 {
   "name": "dialogue-story",
-  "private": true,
-  "version": "0.0.0",
+  "version": "1.0.3",
+  "description": "React + TypeScript dialogue UI (comic/arcade) with RTL support",
+  "author": "Sharik (wacoinseig@gmail.com)",
+  "license": "MIT",
   "type": "module",
+  "main": "dist/dialogue-story.cjs.js",
+  "module": "dist/dialogue-story.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/dialogue-story.es.js",
+      "require": "./dist/dialogue-story.cjs.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:types && vite build",
+    "build:types": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pack:inspect": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
   },
   "dependencies": {
     "@fontsource/vazirmatn": "^5.2.8",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
     "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
