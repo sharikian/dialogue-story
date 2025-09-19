@@ -51,6 +51,16 @@
   box-shadow: 0 6px 16px rgba(0,0,0,0.35);
 }
 
+/* comic-mode full-character helper (applies to PNGs in comic mode)
+   use filter: drop-shadow so shadow follows non-transparent PNG pixels */
+.comic-character-img {
+  transform-origin: center bottom;
+  transition: transform 280ms cubic-bezier(.2,.9,.2,1);
+  /* keep actual drop shadow defined in component inline style for reliability,
+     but provide a CSS fallback as well: */
+  filter: drop-shadow(0 20px 40px rgba(0,0,0,0.45));
+}
+
 /* bubble transitions (kept to match animation timing precisely) */
 .bubble {
   transition: transform 260ms cubic-bezier(.2,.9,.2,1), box-shadow 160ms;
@@ -62,4 +72,55 @@
   inset: 0;
   background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.0) 60%);
   pointer-events: none;
+}
+
+/* comic-mode gradient: heavier sides (left & right) extending toward center and top */
+.dialogue-gradient.comic {
+  /* combine radial gradients on left/right with a light top fade to create stronger side vignettes */
+  background-image:
+    radial-gradient(ellipse at left bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 70%),
+    radial-gradient(ellipse at right bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 70%),
+    linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 60%);
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* ---------------------------
+   Responsive fixes for comic-mode on small screens
+   - make text smaller
+   - increase bubble max width
+   - center the bubble at top-center of PNG (override inline right/left)
+   --------------------------- */
+@media (max-width: 720px) {
+  /* target the comic overlay wrapper + bubbles */
+  .comic-mode .bubble {
+    /* increase allowable width and center horizontally above the character */
+    max-width: 80% !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    /* move bubble closer to the top so it sits neatly above the PNG on narrow screens */
+    top: -4.5rem !important;
+    /* ensure bubble is centered visually and not touching edges */
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    text-align: center !important;
+    pointer-events: auto;
+  }
+
+  /* make inner message text smaller and slightly tighter line-height */
+  .comic-mode .bubble .text {
+    font-size: 14px !important;
+    line-height: 1.1 !important;
+  }
+
+  /* reduce name label size slightly */
+  .comic-mode .bubble .name {
+    font-size: 11px !important;
+  }
+
+  /* improve bubble vertical spacing on small screens */
+  .comic-mode .comic-character-img {
+    max-height: 60vh !important;
+  }
 }

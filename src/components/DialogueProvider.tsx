@@ -15,6 +15,7 @@ export function DialogueProvider({
   rightCharacters,
   speed = 35,
   onFinished,
+  mode = "arcade", // new prop, default keeps arcade behaviour
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<
     InternalMessage[] | null
@@ -259,116 +260,199 @@ export function DialogueProvider({
     prevMessage &&
     currentMessage.charecter === prevMessage.charecter;
 
+  // helper: detect png (comic mode applies full-character only for pngs)
+  const isPngSrc = (src?: string) =>
+    !!src && src.toLowerCase().endsWith(".png");
+
   return (
     <DialogueContext.Provider value={{ dialogue, isActive }}>
       {children}
       {isActive && (
         <div
           /* overlay: moved Tailwind classes inline, kept backdrop filter raw via style */
-          className="fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center"
+          className={`fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center ${mode === "comic" ? "comic-mode" : ""}`}
           aria-hidden={!isActive}
           style={{
             backdropFilter: "blur(4px) saturate(95%)",
             WebkitBackdropFilter: "blur(4px)",
           }}
         >
-          {/* gradient (kept as separate element) */}
-          <div className="dialogue-gradient" />
+          {/* gradient: adds .comic modifier when comic mode */}
+          <div className={`dialogue-gradient ${mode === "comic" ? "comic" : ""}`} />
 
-          {/* container: mapped to Tailwind utilities */}
+          {/* container: for comic we use full inset so character PNGs can be large; for arcade we keep bottom anchored */}
           <div
-            className="absolute left-7 right-7 bottom-7 px-0 py-7 flex justify-between items-end pointer-events-none gap-4 z-[10000] w-auto"
+            className={
+              mode === "comic"
+                ? "absolute inset-0 flex justify-between items-end pointer-events-none z-[10000] w-full"
+                : "absolute left-7 right-7 bottom-7 px-0 py-7 flex justify-between items-end pointer-events-none gap-4 z-[10000] w-auto"
+            }
             aria-live="polite"
             style={{ maxWidth: "none" }}
           >
-            {/* Left side */}
+            {/* Left slot */}
             <div
-              /* slot styles moved to utilities; visibility handled by conditional classes */
+              data-side="left"
               className={`w-auto max-w-[48%] flex items-end min-h-[120px] ${
                 currentChar.side === "left"
                   ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
                   : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
               } ${isConsecutiveSame && currentChar.side === "left" ? "consecutive" : ""}`}
-              data-side="left"
             >
-              <div
-                className={`flex items-end gap-2.5 pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"}`}
-              >
-                {currentChar.src ? (
+              {/* In comic mode: if PNG src available, show a full-character image (object-contain, larger). Otherwise fall back to arcade style. */}
+              {mode === "comic" && isPngSrc(currentChar.src) ? (
+                <div className={`relative pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"} flex items-end`}>
                   <img
                     src={currentChar.src}
                     alt={currentChar.name}
-                    className="character-img w-[92px] h-[92px] object-cover rounded-full"
+                    className="comic-character-img object-contain"
+                    style={{
+                      maxHeight: "clamp(4rem, 85vh, 18rem)",
+                      width: "auto",
+                      // visual: leave corners intact (PNG), apply drop shadow to the PNG's opaque pixels
+                      filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
+                    }}
                   />
-                ) : (
-                  <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
-                    {currentChar.name ? currentChar.name[0] : ""}
-                  </div>
-                )}
-                <div
-                  className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px]"
-                  style={{
-                    background: currentMessage?.resolvedBgColor ?? "#fff",
-                    color: currentMessage?.resolvedTextColor ?? "#000",
-                    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                    transformOrigin: "left bottom",
-                    fontFamily:
-                      'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-                  }}
-                >
-                  <div className="text-[12px] font-bold opacity-90 mb-1.5 text-left name">
-                    {currentChar.name}
-                  </div>
-                  <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
-                    {display}
+
+                  {/* bubble positioned at top-right of image */}
+                  <div
+                    className="bubble max-w-[45%] px-3 py-2.5 rounded-[14px] absolute"
+                    style={{
+                      background: currentMessage?.resolvedBgColor ?? "#fff",
+                      color: currentMessage?.resolvedTextColor ?? "#000",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                      transformOrigin: "left bottom",
+                      fontFamily:
+                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+                      top: "-6rem",
+                      right: "1rem",
+                      pointerEvents: "auto",
+                    }}
+                  >
+                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-left name">
+                      {currentChar.name}
+                    </div>
+                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
+                      {display}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* Arcade-style fallback (unchanged) */
+                <div className={`flex items-end gap-2.5 pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
+                  {currentChar.src ? (
+                    <img
+                      src={currentChar.src}
+                      alt={currentChar.name}
+                      className="character-img w-[92px] h-[92px] object-cover rounded-full"
+                    />
+                  ) : (
+                    <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
+                      {currentChar.name ? currentChar.name[0] : ""}
+                    </div>
+                  )}
+                  <div
+                    className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px]"
+                    style={{
+                      background: currentMessage?.resolvedBgColor ?? "#fff",
+                      color: currentMessage?.resolvedTextColor ?? "#000",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                      transformOrigin: "left bottom",
+                      fontFamily:
+                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+                    }}
+                  >
+                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-left name">
+                      {currentChar.name}
+                    </div>
+                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
+                      {display}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Right side */}
+            {/* Right slot */}
             <div
+              data-side="right"
               className={`w-auto max-w-[48%] flex items-end min-h-[120px] ${
                 currentChar.side === "right"
                   ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
                   : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
-
               } ${isConsecutiveSame && currentChar.side === "right" ? "consecutive" : ""}`}
-              data-side="right"
             >
-              <div
-                className={`flex items-end gap-2.5 pointer-events-auto flex-row-reverse ${isConsecutiveSame ? "animate-change" : "animate-in"}`}
-              >
-                {currentChar.src ? (
+              {mode === "comic" && isPngSrc(currentChar.src) ? (
+                <div className={`relative pointer-events-auto ${isConsecutiveSame ? "animate-change" : "animate-in"} flex items-end`}>
                   <img
                     src={currentChar.src}
                     alt={currentChar.name}
-                    className="character-img w-[92px] h-[92px] object-cover rounded-full"
+                    className="comic-character-img object-contain"
+                    style={{
+                      maxHeight: "clamp(4rem, 85vh, 25rem)",
+                      width: "auto",
+                      filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
+                    }}
                   />
-                ) : (
-                  <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
-                    {currentChar.name ? currentChar.name[0] : ""}
-                  </div>
-                )}
-                <div
-                  className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px] text-right"
-                  style={{
-                    background: currentMessage?.resolvedBgColor ?? "#fff",
-                    color: currentMessage?.resolvedTextColor ?? "#000",
-                    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                    transformOrigin: "right bottom",
-                    fontFamily:
-                      'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-                  }}
-                >
-                  <div className="text-[12px] font-bold opacity-90 mb-1.5 text-right name">
-                    {currentChar.name}
-                  </div>
-                  <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
-                    {display}
+
+                  {/* bubble positioned at top-left of image */}
+                  <div
+                    className="bubble max-w-[45%] px-3 py-2.5 rounded-[14px] absolute"
+                    style={{
+                      background: currentMessage?.resolvedBgColor ?? "#fff",
+                      color: currentMessage?.resolvedTextColor ?? "#000",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                      transformOrigin: "right bottom",
+                      fontFamily:
+                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+                      top: "-6rem",
+                      left: "1rem",
+                      pointerEvents: "auto",
+                      textAlign: "right",
+                    }}
+                  >
+                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-right name">
+                      {currentChar.name}
+                    </div>
+                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
+                      {display}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* Arcade-style fallback (unchanged) */
+                <div className={`flex items-end gap-2.5 pointer-events-auto flex-row-reverse ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
+                  {currentChar.src ? (
+                    <img
+                      src={currentChar.src}
+                      alt={currentChar.name}
+                      className="character-img w-[92px] h-[92px] object-cover rounded-full"
+                    />
+                  ) : (
+                    <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
+                      {currentChar.name ? currentChar.name[0] : ""}
+                    </div>
+                  )}
+                  <div
+                    className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px] text-right"
+                    style={{
+                      background: currentMessage?.resolvedBgColor ?? "#fff",
+                      color: currentMessage?.resolvedTextColor ?? "#000",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                      transformOrigin: "right bottom",
+                      fontFamily:
+                        'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+                    }}
+                  >
+                    <div className="text-[12px] font-bold opacity-90 mb-1.5 text-right name">
+                      {currentChar.name}
+                    </div>
+                    <div className={`text text-[18px] leading-[1.2] whitespace-pre-wrap break-words ${typing ? "typing" : "done"}`}>
+                      {display}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

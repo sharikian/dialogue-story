@@ -7,6 +7,7 @@ export type DialogueProviderProps = {
   rightCharacters: CharacterEntry[];
   speed?: number; // default ms per type letters
   onFinished?: () => void; // called after full dialogue finishes
+  mode?: "arcade" | "comic"; // "arcade" = original circular avatars; "comic" = full-character PNGs with comic-style bubbles
 };
 
 export type DialogueContextValue = {

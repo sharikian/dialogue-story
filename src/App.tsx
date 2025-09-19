@@ -45,7 +45,7 @@ export default function App() {
   };
 
   return (
-    <DialogueProvider leftCharacters={left} rightCharacters={right} speed={40} onFinished={handleFinished}>
+    <DialogueProvider leftCharacters={left} rightCharacters={right} mode="comic" speed={40} onFinished={handleFinished}>
       <AppInner />
     </DialogueProvider>
   );
