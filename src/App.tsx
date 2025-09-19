@@ -34,10 +34,10 @@ export default function App() {
   // Provide character assets and modes here
   const left = [
     { name: "Eddy", src: "/avatars/left.png" },
-    { name: "Eddy", mode: "angry", src: "/avatars/right.png" }
+    { name: "Eddy", mode: "angry", src: "/avatars/left.png" }
   ];
   const right = [
-    { name: "Ali", src: "/avatars/left.png" },
+    { name: "Ali", src: "/avatars/right.png" },
   ];
 
   const handleFinished = () => {

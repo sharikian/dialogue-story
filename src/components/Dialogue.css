@@ -4,7 +4,6 @@
   inset: 0;
   z-index: 9999;
   pointer-events: auto;
-  /* slight background transparency to dim app */
   backdrop-filter: blur(4px) saturate(95%);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
@@ -20,23 +19,26 @@
   pointer-events: none;
 }
 
-/* central container for slots */
+/* container spans full width, anchors slots at edges */
 .dialogue-container {
-  position: relative;
-  width: 100%;
-  max-width: 1100px;
-  padding: 28px;
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 28px;
+  padding: 28px 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  pointer-events: none; /* clicks are captured by overlay outer (we rely on global click handler) */
+  pointer-events: none;
   gap: 18px;
   z-index: 10000;
+  max-width: none;
+  width: auto;
 }
 
-/* slot left/right to arrange characters */
 .dialogue-slot {
-  width: 48%;
+  width: auto;
+  max-width: 48%;
   display: flex;
   align-items: flex-end;
   min-height: 120px;
@@ -64,7 +66,7 @@
   pointer-events: auto;
 }
 
-/* left layout: image left, bubble right; right layout reversed with flex-direction */
+/* right layout: reverse order */
 .dialogue-slot.right .character-card {
   flex-direction: row-reverse;
 }
@@ -109,6 +111,15 @@
   font-weight: 700;
   opacity: 0.9;
   margin-bottom: 6px;
+  text-align: left;
+}
+
+/* fix: align name and text to right side for right slot */
+.dialogue-slot.right .bubble {
+  text-align: right;
+}
+.dialogue-slot.right .name {
+  text-align: right;
 }
 
 /* text area */
@@ -135,7 +146,7 @@
   51%, 100% { opacity: 0; }
 }
 
-/* animations: when a message appears */
+/* animations */
 .animate-in {
   animation: popIn 420ms cubic-bezier(.2,.9,.2,1);
 }
@@ -145,7 +156,6 @@
   100% { transform: translateY(0) scale(1) rotate(0deg); }
 }
 
-/* special when same speaker speaks again: more pronounced pop from bottom (like clash of clans) */
 .animate-change {
   animation: changePop 520ms cubic-bezier(.2,.9,.2,1);
 }
@@ -155,14 +165,19 @@
   100% { transform: translateY(0) scale(1) rotate(0deg); }
 }
 
-/* small extra effect for image scaling on update */
 .consecutive .character-img {
   transform: translateY(0) scale(1.06) rotate(-2deg);
 }
 
-/* responsive tweak: small screens stack */
+/* responsive tweak */
 @media (max-width: 720px) {
-  .dialogue-container { padding: 10px; gap: 6px; max-width: 100%; }
+  .dialogue-container {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    padding: 10px 0;
+    gap: 6px;
+  }
   .character-img { width: 72px; height: 72px; }
   .bubble { max-width: 70%; font-size: 16px; padding: 10px 12px; }
 }

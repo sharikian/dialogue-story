@@ -17,12 +17,16 @@ export function DialogueProvider({
   speed = 35,
   onFinished,
 }: DialogueProviderProps) {
-  const [activeMessages, setActiveMessages] = useState<InternalMessage[] | null>(null);
+  const [activeMessages, setActiveMessages] = useState<
+    InternalMessage[] | null
+  >(null);
   const [index, setIndex] = useState(0);
   const [display, setDisplay] = useState(""); // current typed text
   const [typing, setTyping] = useState(false);
   const [isActive, setIsActive] = useState(false);
-  const [currentMessage, setCurrentMessage] = useState<InternalMessage | null>(null);
+  const [currentMessage, setCurrentMessage] = useState<InternalMessage | null>(
+    null
+  );
   const [prevMessage, setPrevMessage] = useState<InternalMessage | null>(null);
   const typingTimer = useRef<number | null>(null);
   const resolvePromise = useRef<(() => void) | null>(null);
@@ -30,22 +34,37 @@ export function DialogueProvider({
   // flatten char lists for lookup
   const allCharacters = [...leftCharacters, ...rightCharacters];
 
-  const findCharacterEntry = (name: string, mode?: string): { entry?: CharacterEntry; side: "left" | "right" | "unknown" } => {
+  const findCharacterEntry = (
+    name: string,
+    mode?: string
+  ): { entry?: CharacterEntry; side: "left" | "right" | "unknown" } => {
     // try exact match (name + mode) first
     if (mode) {
-      const found = allCharacters.find((c) => c.name === name && c.mode === mode);
+      const found = allCharacters.find(
+        (c) => c.name === name && c.mode === mode
+      );
       if (found) {
-        const side = leftCharacters.includes(found) ? "left" : rightCharacters.includes(found) ? "right" : "unknown";
+        const side = leftCharacters.includes(found)
+          ? "left"
+          : rightCharacters.includes(found)
+          ? "right"
+          : "unknown";
         return { entry: found, side };
       }
     }
     // fallback to name + default mode (entry with same name and no mode) or first matching name
-    let found = allCharacters.find((c) => c.name === name && (!c.mode || c.mode === "default"));
+    let found = allCharacters.find(
+      (c) => c.name === name && (!c.mode || c.mode === "default")
+    );
     if (!found) {
       found = allCharacters.find((c) => c.name === name);
     }
     if (found) {
-      const side = leftCharacters.includes(found) ? "left" : rightCharacters.includes(found) ? "right" : "unknown";
+      const side = leftCharacters.includes(found)
+        ? "left"
+        : rightCharacters.includes(found)
+        ? "right"
+        : "unknown";
       return { entry: found, side };
     }
     return { entry: undefined, side: "unknown" };
@@ -70,29 +89,32 @@ export function DialogueProvider({
   };
 
   // core: step to given index
-  const startTypingMessage = useCallback((msgs: InternalMessage[], idx: number) => {
-    clearTypingTimer();
-    const msg = msgs[idx];
-    setCurrentMessage(msg);
-    setPrevMessage(idx > 0 ? msgs[idx - 1] : null);
-    setDisplay("");
-    setTyping(true);
-    setIsActive(true);
+  const startTypingMessage = useCallback(
+    (msgs: InternalMessage[], idx: number) => {
+      clearTypingTimer();
+      const msg = msgs[idx];
+      setCurrentMessage(msg);
+      setPrevMessage(idx > 0 ? msgs[idx - 1] : null);
+      setDisplay("");
+      setTyping(true);
+      setIsActive(true);
 
-    const full = msg.text;
-    let pos = 0;
-    const interval = Math.max(1, msg.resolvedTypeSpeed);
+      const full = msg.text;
+      let pos = 0;
+      const interval = Math.max(1, msg.resolvedTypeSpeed);
 
-    // typing function adds letters one by one
-    typingTimer.current = window.setInterval(() => {
-      pos += 1;
-      setDisplay(full.slice(0, pos));
-      if (pos >= full.length) {
-        clearTypingTimer();
-        setTyping(false);
-      }
-    }, interval);
-  }, []);
+      // typing function adds letters one by one
+      typingTimer.current = window.setInterval(() => {
+        pos += 1;
+        setDisplay(full.slice(0, pos));
+        if (pos >= full.length) {
+          clearTypingTimer();
+          setTyping(false);
+        }
+      }, interval);
+    },
+    []
+  );
 
   // click/keyboard to advance
   useEffect(() => {
@@ -130,7 +152,38 @@ export function DialogueProvider({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === " " || e.key === "Enter") {
-        onClick(new MouseEvent("click") as unknown as MouseEvent);
+        if (!isActive || !activeMessages) return;
+        e.preventDefault();
+
+        // if currently typing -> finish instantly
+        if (typing && currentMessage) {
+          clearTypingTimer();
+          setDisplay(currentMessage.text);
+          setTyping(false);
+          return;
+        }
+
+        // else move to next message or end
+        const nextIndex = index + 1;
+        if (nextIndex < activeMessages.length) {
+          setIndex(nextIndex);
+          startTypingMessage(activeMessages, nextIndex);
+          return;
+        }
+
+        // finished
+        setActiveMessages(null);
+        setIndex(0);
+        setCurrentMessage(null);
+        setPrevMessage(null);
+        setDisplay("");
+        setTyping(false);
+        setIsActive(false);
+        if (onFinished) onFinished();
+        if (resolvePromise.current) {
+          resolvePromise.current();
+          resolvePromise.current = null;
+        }
       }
     };
 
@@ -140,7 +193,15 @@ export function DialogueProvider({
       window.removeEventListener("click", onClick, { capture: true });
       window.removeEventListener("keydown", onKey);
     };
-  }, [isActive, typing, currentMessage, index, activeMessages, startTypingMessage, onFinished]);
+  }, [
+    isActive,
+    typing,
+    currentMessage,
+    index,
+    activeMessages,
+    startTypingMessage,
+    onFinished,
+  ]);
 
   // When index or activeMessages change update current message typing
   useEffect(() => {
@@ -153,24 +214,33 @@ export function DialogueProvider({
   }, [activeMessages, index, startTypingMessage]);
 
   // the provided function
-  const dialogue = useCallback((messages: DialogueMessage[]) => {
-    if (!messages || messages.length === 0) return Promise.resolve();
+  const dialogue = useCallback(
+    (messages: DialogueMessage[]) => {
+      if (!messages || messages.length === 0) return Promise.resolve();
 
-    // map and validate characters
-    const prepared = prepareMessages(messages);
-    setActiveMessages(prepared);
-    setIndex(0);
-    setIsActive(true);
+      // map and validate characters
+      const prepared = prepareMessages(messages);
+      setActiveMessages(prepared);
+      setIndex(0);
+      setIsActive(true);
 
-    // return a promise resolved when finished
-    return new Promise<void>((res) => {
-      resolvePromise.current = res;
-    });
-  }, [speed]);
+      // return a promise resolved when finished
+      return new Promise<void>((res) => {
+        resolvePromise.current = res;
+      });
+    },
+    [speed]
+  );
 
   // helper: resolve character UI props for the currently shown message
   const resolveCurrentCharacter = (msg: InternalMessage | null) => {
-    if (!msg) return { name: "", src: "", side: "left", resolvedMode: msg?.mode ?? "default" };
+    if (!msg)
+      return {
+        name: "",
+        src: "",
+        side: "left",
+        resolvedMode: msg?.mode ?? "default",
+      };
     const { entry, side } = findCharacterEntry(msg.charecter, msg.mode);
     return {
       name: msg.charecter,
@@ -186,7 +256,9 @@ export function DialogueProvider({
 
   // decide animation class: if previous message was same character name => consecutive animation
   const isConsecutiveSame =
-    currentMessage && prevMessage && currentMessage.charecter === prevMessage.charecter;
+    currentMessage &&
+    prevMessage &&
+    currentMessage.charecter === prevMessage.charecter;
 
   return (
     <DialogueContext.Provider value={{ dialogue, isActive }}>
@@ -200,14 +272,30 @@ export function DialogueProvider({
             <div
               className={`dialogue-slot left ${
                 currentChar.side === "left" ? "visible" : "invisible"
-              } ${isConsecutiveSame && currentChar.side === "left" ? "consecutive" : ""}`}
+              } ${
+                isConsecutiveSame && currentChar.side === "left"
+                  ? "consecutive"
+                  : ""
+              }`}
               data-side="left"
             >
-              <div className={`character-card ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
+              {/* NOTE: render image first in markup for both sides for deterministic order;
+                  CSS will reverse the right side visually. */}
+              <div
+                className={`character-card ${
+                  isConsecutiveSame ? "animate-change" : "animate-in"
+                }`}
+              >
                 {currentChar.src ? (
-                  <img src={currentChar.src} alt={currentChar.name} className="character-img" />
+                  <img
+                    src={currentChar.src}
+                    alt={currentChar.name}
+                    className="character-img"
+                  />
                 ) : (
-                  <div className="character-fallback">{currentChar.name[0]}</div>
+                  <div className="character-fallback">
+                    {currentChar.name[0]}
+                  </div>
                 )}
                 <div
                   className="bubble"
@@ -217,7 +305,9 @@ export function DialogueProvider({
                   }}
                 >
                   <div className="name">{currentChar.name}</div>
-                  <div className={`text ${typing ? "typing" : "done"}`}>{display}</div>
+                  <div className={`text ${typing ? "typing" : "done"}`}>
+                    {display}
+                  </div>
                 </div>
               </div>
             </div>
@@ -226,10 +316,30 @@ export function DialogueProvider({
             <div
               className={`dialogue-slot right ${
                 currentChar.side === "right" ? "visible" : "invisible"
-              } ${isConsecutiveSame && currentChar.side === "right" ? "consecutive" : ""}`}
+              } ${
+                isConsecutiveSame && currentChar.side === "right"
+                  ? "consecutive"
+                  : ""
+              }`}
               data-side="right"
             >
-              <div className={`character-card ${isConsecutiveSame ? "animate-change" : "animate-in"}`}>
+              {/* same markup: image first, bubble second. CSS (row-reverse) will place image to the right visually */}
+              <div
+                className={`character-card ${
+                  isConsecutiveSame ? "animate-change" : "animate-in"
+                }`}
+              >
+                {currentChar.src ? (
+                  <img
+                    src={currentChar.src}
+                    alt={currentChar.name}
+                    className="character-img"
+                  />
+                ) : (
+                  <div className="character-fallback">
+                    {currentChar.name[0]}
+                  </div>
+                )}
                 <div
                   className="bubble"
                   style={{
@@ -238,13 +348,10 @@ export function DialogueProvider({
                   }}
                 >
                   <div className="name">{currentChar.name}</div>
-                  <div className={`text ${typing ? "typing" : "done"}`}>{display}</div>
+                  <div className={`text ${typing ? "typing" : "done"}`}>
+                    {display}
+                  </div>
                 </div>
-                {currentChar.src ? (
-                  <img src={currentChar.src} alt={currentChar.name} className="character-img" />
-                ) : (
-                  <div className="character-fallback">{currentChar.name[0]}</div>
-                )}
               </div>
             </div>
           </div>
