@@ -2,9 +2,10 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "declaration": true,
+    "declarationMap": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
-    "noEmit": false
+    "module": "ESNext"
   },
-  "include": ["src"]
+  "include": ["src/index.ts", "src/components/**/*", "src/hooks/**/*", "src/types/**/*", "src/context/**/*"]
 }

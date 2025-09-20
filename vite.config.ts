@@ -10,16 +10,18 @@ export default defineConfig({
       entry: resolve(__dirname, "src/index.ts"),
       name: "DialogueStory",
       formats: ["es", "cjs", "umd"],
-      fileName: (format) => `dialogue-story.${format}.js`
+      fileName: (format) => `dialogue-story.${format}.js`,
     },
     rollupOptions: {
-      external: ["react", "react-dom"],
+      external: [/^react($|\/)/, /^react-dom($|\/)/],
       output: {
         globals: {
           react: "React",
-          "react-dom": "ReactDOM"
-        }
-      }
-    }
-  }
+          "react-dom": "ReactDOM",
+        },
+      },
+    },
+    sourcemap: true,
+    minify: true,
+  },
 });
