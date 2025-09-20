@@ -19,6 +19,12 @@ export default defineConfig({
           react: "React",
           "react-dom": "ReactDOM",
         },
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name && assetInfo.name.endsWith(".css")) {
+            return "dialogue-story.css";
+          }
+          return "assets/[name]-[hash][extname]";
+        },
       },
     },
     sourcemap: true,
