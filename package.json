@@ -1,6 +1,6 @@
 {
   "name": "dialogue-story",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "React + TypeScript dialogue UI (comic/arcade) with RTL support",
   "author": "Sharik (wacoinseig@gmail.com)",
   "license": "MIT",
@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:types && vite build",
+    "build": "vite build && npm run build:types",
     "build:types": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "preview": "vite preview",

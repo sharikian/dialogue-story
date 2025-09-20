@@ -5,7 +5,12 @@
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
-    "module": "ESNext"
+    "rootDir": "src",
+    "noEmit": false,
+    "isolatedModules": false,
+    "skipLibCheck": true,
+    "stripInternal": false
   },
-  "include": ["src/index.ts", "src/components/**/*", "src/hooks/**/*", "src/types/**/*", "src/context/**/*"]
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
 }
