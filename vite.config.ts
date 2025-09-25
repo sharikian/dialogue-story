@@ -5,6 +5,9 @@ import { resolve } from "path";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  css: {
+    postcss: "./postcss.config.cjs",
+  },
   build: {
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
