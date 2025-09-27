@@ -1,5 +1,5 @@
 import React from "react";
-import type { DialogueMessage, CharacterEntry } from "../types/dialogue";
+import type { DialogueMessage, CharacterEntry, BackgroundFilter } from "../types/dialogue";
 
 export type DialogueProviderProps = {
   children: React.ReactNode;
@@ -16,6 +16,12 @@ export type DialogueProviderProps = {
    * - null/undefined: no background (default)
    */
   bgImage?: string | null;
+
+  /**
+   * Optional provider-wide background filter (fade + blur).
+   * Used for provider bgImage by default, and for messages that do not supply their own `filter`.
+   */
+  bgFilter?: BackgroundFilter;
 };
 
 export type DialogueContextValue = {

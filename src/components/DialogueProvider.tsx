@@ -1,7 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { DialogueContext } from "../context/DialogueContext";
 import type { DialogueProviderProps } from "../context/DialogueContext";
-import type { DialogueMessage, CharacterEntry } from "../types/dialogue";
+import type {
+  DialogueMessage,
+  CharacterEntry,
+  BackgroundFilter,
+} from "../types/dialogue";
+
+/**
+ * FIX:
+ * Prevent ephemeral default object identity from causing repeated recreation
+ * of callbacks/effects (which was resetting typing/display). Use a module-level
+ * frozen default object so its identity is stable across renders.
+ */
+const DEFAULT_BG_FILTER: Readonly<BackgroundFilter> = Object.freeze({
+  fade: 0,
+  blur: 0,
+});
 
 type InternalMessage = DialogueMessage & {
   resolvedTypeSpeed: number;
@@ -23,6 +38,8 @@ export function DialogueProvider({
   mode = "arcade", // new prop, default keeps arcade behaviour
   rtl = false, // new prop, default false
   bgImage: providerBgImage, // provider-wide background image (optional)
+  // use stable default object identity to avoid re-creating callbacks/effects each render
+  bgFilter: providerBgFilter = DEFAULT_BG_FILTER,
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<
     InternalMessage[] | null
@@ -43,7 +60,13 @@ export function DialogueProvider({
   const [currentBg, setCurrentBg] = useState<string | null>(
     providerBgImage ?? null
   );
+  const [currentBgFilter, setCurrentBgFilter] = useState<
+    BackgroundFilter | null
+  >(providerBgFilter ?? DEFAULT_BG_FILTER);
   const [prevBg, setPrevBg] = useState<string | null>(null);
+  const [prevBgFilter, setPrevBgFilter] = useState<BackgroundFilter | null>(
+    null
+  );
   const [prevVisible, setPrevVisible] = useState(false);
   const bgFadeTimeout = useRef<number | null>(null);
   const BG_FADE_DURATION = 420; // ms, matches the other animations
@@ -121,40 +144,53 @@ export function DialogueProvider({
   }, []);
 
   // Update background (handles provider fallback + message-driven change)
+  // newBg === undefined => no change; newBg === null => clear background
   const updateBackgroundForMessage = useCallback(
-    (newBg?: string | null) => {
-      // newBg === undefined => no change
+    (newBg?: string | null, filter?: BackgroundFilter | null) => {
+      // no change
       if (typeof newBg === "undefined") return;
 
-      setCurrentBg((prevCur) => {
-        // If unchanged, nothing to do
-        if (newBg === prevCur) return prevCur;
+      // use filter fallback: message-specific filter -> provider filter -> defaults
+      const targetFilter: BackgroundFilter | null =
+        filter ?? providerBgFilter ?? DEFAULT_BG_FILTER;
 
-        // Put the previous image into prevBg so we can crossfade it out
+      setCurrentBg((prevCur) => {
+        // If unchanged (same URL and same filter) -> nothing to do
+        const sameUrl = prevCur === newBg;
+        const sameFilter =
+          JSON.stringify(currentBgFilter ?? {}) ===
+          JSON.stringify(targetFilter ?? {});
+        if (sameUrl && sameFilter) return prevCur;
+
+        // if previous current exists, push to prev layer for crossfade
         if (prevCur) {
           // clear any previous pending prev cleanup
           clearBgFadeTimeout();
           setPrevBg(prevCur);
+          setPrevBgFilter(currentBgFilter ?? null);
           setPrevVisible(true);
 
           // ensure we let the browser paint the prev layer as visible, then trigger fade
-          // (use requestAnimationFrame to ensure the CSS transition fires)
           requestAnimationFrame(() => {
             setPrevVisible(false);
           });
 
-          // after fade duration remove prevBg
+          // after fade duration remove prevBg + prev filter
           bgFadeTimeout.current = window.setTimeout(() => {
             setPrevBg(null);
+            setPrevBgFilter(null);
             setPrevVisible(false);
             bgFadeTimeout.current = null;
           }, BG_FADE_DURATION + 30);
         }
 
+        // set new current bg and its filter
+        setCurrentBgFilter(targetFilter);
         return newBg;
       });
     },
-    []
+    // providerBgFilter is a stable default (DEFAULT_BG_FILTER) so won't flip identity unexpectedly
+    [providerBgFilter, currentBgFilter]
   );
 
   // core: step to given index
@@ -164,8 +200,8 @@ export function DialogueProvider({
       const msg = msgs[idx];
 
       // handle background change for this message:
-      // logic: undefined -> no change, null -> clear background, string -> set that image
-      updateBackgroundForMessage(msg.bgImage);
+      // logic: undefined => no change, null => clear background, string => set that image
+      updateBackgroundForMessage(msg.bgImage, msg.filter ?? null);
 
       // NEW: when starting a message, clear any pinned message for the SAME SIDE.
       // This enforces: pinned (showTimes) remains visible only until the next message from the same side appears.
@@ -261,7 +297,9 @@ export function DialogueProvider({
       // restore provider background (if any) as the "current" state so next dialogue will start from provider image
       // (we don't need to animate here because overlay will hide)
       setCurrentBg(providerBgImage ?? null);
+      setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
       setPrevBg(null);
+      setPrevBgFilter(null);
       setPrevVisible(false);
 
       if (onFinished) onFinished();
@@ -307,7 +345,9 @@ export function DialogueProvider({
 
         // restore provider background (if any)
         setCurrentBg(providerBgImage ?? null);
+        setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
         setPrevBg(null);
+        setPrevBgFilter(null);
         setPrevVisible(false);
 
         if (onFinished) onFinished();
@@ -333,6 +373,7 @@ export function DialogueProvider({
     startTypingMessage,
     onFinished,
     providerBgImage,
+    providerBgFilter,
   ]);
 
   // When index or activeMessages change update current message typing
@@ -355,7 +396,9 @@ export function DialogueProvider({
 
       // start from provider background by default (messages may override in startTypingMessage)
       setCurrentBg(providerBgImage ?? null);
+      setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
       setPrevBg(null);
+      setPrevBgFilter(null);
       setPrevVisible(false);
 
       setActiveMessages(prepared);
@@ -368,7 +411,7 @@ export function DialogueProvider({
         resolvePromise.current = res;
       });
     },
-    [speed, providerBgImage]
+    [speed, providerBgImage, providerBgFilter]
   );
 
   // helper: resolve character UI props for the given message
@@ -419,6 +462,11 @@ export function DialogueProvider({
       if (!rtl) return options.forSide === "left" ? "left bottom" : "right bottom";
       return options.forSide === "left" ? "right bottom" : "left bottom";
     })();
+
+    const isConsecutiveSame =
+      currentMessage &&
+      prevMessage &&
+      currentMessage.charecter === prevMessage.charecter;
 
     const animateClass = options.animate ? (isConsecutiveSame ? "animate-change" : "animate-in") : "";
     const isComic = options.comic ?? mode === "comic";
@@ -554,6 +602,13 @@ export function DialogueProvider({
   const leftCurrent = currentChar.side === "left" && currentMessage ? currentMessage : null;
   const rightCurrent = currentChar.side === "right" && currentMessage ? currentMessage : null;
 
+  // helper to compute opacity from filter.fade (fade=0 => opacity 1)
+  const opacityFromFade = (f?: number) => {
+    const fade = typeof f === "number" ? f : 0;
+    const op = 1 - Math.min(1, Math.max(0, fade));
+    return op;
+  };
+
   return (
     <DialogueContext.Provider value={{ dialogue, isActive }}>
       {children}
@@ -585,7 +640,9 @@ export function DialogueProvider({
                   backgroundPosition: "center center",
                   backgroundRepeat: "no-repeat",
                   transition: `opacity ${BG_FADE_DURATION}ms ease`,
-                  opacity: prevVisible ? 1 : 0,
+                  // when prevVisible true -> show with its configured opacity; otherwise hide (0)
+                  opacity: prevVisible ? opacityFromFade(prevBgFilter?.fade) : 0,
+                  filter: prevBgFilter && typeof prevBgFilter.blur === "number" && prevBgFilter.blur > 0 ? `blur(${prevBgFilter.blur}px)` : undefined,
                 }}
               />
             ) : null}
@@ -602,7 +659,9 @@ export function DialogueProvider({
                   backgroundPosition: "center center",
                   backgroundRepeat: "no-repeat",
                   transition: `opacity ${BG_FADE_DURATION}ms ease`,
-                  opacity: 1,
+                  // current uses its filter-derived opacity (fade).
+                  opacity: opacityFromFade(currentBgFilter?.fade),
+                  filter: currentBgFilter && typeof currentBgFilter.blur === "number" && currentBgFilter.blur > 0 ? `blur(${currentBgFilter.blur}px)` : undefined,
                 }}
               />
             ) : null}
