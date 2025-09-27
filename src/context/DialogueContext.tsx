@@ -3,8 +3,24 @@ import type { DialogueMessage, CharacterEntry, BackgroundFilter } from "../types
 
 export type DialogueProviderProps = {
   children: React.ReactNode;
-  leftCharacters: CharacterEntry[];
-  rightCharacters: CharacterEntry[];
+
+  /**
+   * Either supply explicit left/right character arrays OR supply a single
+   * `charectersPath` (note: intentionally spelled like this to match your API).
+   *
+   * If `charectersPath` is given, the provider will try to load
+   * `${charectersPath}/index.json` which should have the manifest of folders/files.
+   */
+  leftCharacters?: CharacterEntry[];
+  rightCharacters?: CharacterEntry[];
+
+  /**
+   * If provided the provider will attempt to load `${charectersPath}/index.json`
+   * and auto-create CharacterEntry objects from the files under each character
+   * folder. This is mutually exclusive with passing leftCharacters/rightCharacters.
+   */
+  charectersPath?: string;
+
   speed?: number; // default ms per type letters
   onFinished?: () => void; // called after full dialogue finishes
   mode?: "arcade" | "comic"; // "arcade" = original circular avatars; "comic" = full-character PNGs with comic-style bubbles

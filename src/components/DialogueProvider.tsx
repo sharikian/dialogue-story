@@ -29,10 +29,34 @@ type PinnedMap = {
   right?: InternalMessage;
 };
 
+/**
+ * Helper: turns a filename like "proud.png" into mode "proud".
+ * "default.png" will be treated specially (no mode property).
+ */
+const modeFromFilename = (filename: string) => {
+  const name = filename.replace(/\.[^.]+$/, "");
+  if (name.toLowerCase() === "default") return undefined;
+  return name;
+};
+
+/**
+ * Helper: manifest shape expected at `${charectersPath}/index.json`
+ * {
+ *   "characters": {
+ *     "andy": ["default.png","out.png","proud.png","surprised.png"],
+ *     ...
+ *   }
+ * }
+ */
+type CharactersManifest = {
+  characters: Record<string, string[]>;
+};
+
 export function DialogueProvider({
   children,
-  leftCharacters,
-  rightCharacters,
+  leftCharacters: propLeftCharacters = [],
+  rightCharacters: propRightCharacters = [],
+  charectersPath, // <-- new prop (intentionally spelled like this per your request)
   speed = 35,
   onFinished,
   mode = "arcade", // new prop, default keeps arcade behaviour
@@ -41,74 +65,143 @@ export function DialogueProvider({
   // use stable default object identity to avoid re-creating callbacks/effects each render
   bgFilter: providerBgFilter = DEFAULT_BG_FILTER,
 }: DialogueProviderProps) {
-  const [activeMessages, setActiveMessages] = useState<
-    InternalMessage[] | null
-  >(null);
+  const [activeMessages, setActiveMessages] = useState<InternalMessage[] | null>(null);
   const [index, setIndex] = useState(0);
   const [display, setDisplay] = useState(""); // current typed text
   const [typing, setTyping] = useState(false);
   const [isActive, setIsActive] = useState(false);
-  const [currentMessage, setCurrentMessage] = useState<InternalMessage | null>(
-    null
-  );
+  const [currentMessage, setCurrentMessage] = useState<InternalMessage | null>(null);
   const [prevMessage, setPrevMessage] = useState<InternalMessage | null>(null);
   const [pinned, setPinned] = useState<PinnedMap>({}); // store messages that should persist until next same-side message
   const typingTimer = useRef<number | null>(null);
   const resolvePromise = useRef<(() => void) | null>(null);
 
   // Background crossfade state:
-  const [currentBg, setCurrentBg] = useState<string | null>(
-    providerBgImage ?? null
-  );
-  const [currentBgFilter, setCurrentBgFilter] = useState<
-    BackgroundFilter | null
-  >(providerBgFilter ?? DEFAULT_BG_FILTER);
+  const [currentBg, setCurrentBg] = useState<string | null>(providerBgImage ?? null);
+  const [currentBgFilter, setCurrentBgFilter] = useState<BackgroundFilter | null>(providerBgFilter ?? DEFAULT_BG_FILTER);
   const [prevBg, setPrevBg] = useState<string | null>(null);
-  const [prevBgFilter, setPrevBgFilter] = useState<BackgroundFilter | null>(
-    null
-  );
+  const [prevBgFilter, setPrevBgFilter] = useState<BackgroundFilter | null>(null);
   const [prevVisible, setPrevVisible] = useState(false);
   const bgFadeTimeout = useRef<number | null>(null);
   const BG_FADE_DURATION = 420; // ms, matches the other animations
 
-  // flatten char lists for lookup
-  const allCharacters = [...leftCharacters, ...rightCharacters];
+  // -----------------------------
+  // Runtime-resolved character entries
+  // If charectersPath is provided we will attempt to fetch a manifest and build
+  // both left and right character lists. Otherwise we use propLeftCharacters/propRightCharacters.
+  // -----------------------------
+  const [runtimeLeftCharacters, setRuntimeLeftCharacters] = useState<CharacterEntry[] | null>(null);
+  const [runtimeRightCharacters, setRuntimeRightCharacters] = useState<CharacterEntry[] | null>(null);
+  const loaderInFlight = useRef(false);
 
-  const findCharacterEntry = (
-    name: string,
-    mode?: string
-  ): { entry?: CharacterEntry; side: "left" | "right" | "unknown" } => {
-    // try exact match (name + mode) first
-    if (mode) {
-      const found = allCharacters.find(
-        (c) => c.name === name && c.mode === mode
-      );
-      if (found) {
-        const side = leftCharacters.includes(found)
-          ? "left"
-          : rightCharacters.includes(found)
-          ? "right"
-          : "unknown";
-        return { entry: found, side };
+  useEffect(() => {
+    // If user provided charectersPath, try to load manifest and create entries.
+    if (!charectersPath) {
+      // clear runtime lists (use explicit props)
+      setRuntimeLeftCharacters(null);
+      setRuntimeRightCharacters(null);
+      return;
+    }
+
+    // Avoid duplicate loads
+    if (loaderInFlight.current) return;
+    loaderInFlight.current = true;
+
+    const tryLoad = async () => {
+      const tryUrls = [
+        `${charectersPath.replace(/\/$/, "")}/index.json`,
+        `${charectersPath.replace(/\/$/, "")}/manifest.json`,
+      ];
+
+      let manifest: CharactersManifest | null = null;
+      for (const url of tryUrls) {
+        try {
+          const res = await fetch(url, { cache: "no-cache" });
+          if (!res.ok) continue;
+          const json = (await res.json()) as CharactersManifest;
+          if (json && typeof json === "object" && json.characters) {
+            manifest = json;
+            break;
+          }
+        } catch (err) {
+          // continue to next try
+        }
       }
-    }
-    // fallback to name + default mode (entry with same name and no mode) or first matching name
-    let found = allCharacters.find(
-      (c) => c.name === name && (!c.mode || c.mode === "default")
-    );
-    if (!found) {
-      found = allCharacters.find((c) => c.name === name);
-    }
-    if (found) {
-      const side = leftCharacters.includes(found)
-        ? "left"
-        : rightCharacters.includes(found)
-        ? "right"
-        : "unknown";
-      return { entry: found, side };
-    }
-    return { entry: undefined, side: "unknown" };
-  };
+
+      if (!manifest) {
+        // failed to load manifest — log and fallback to props
+        // (we don't throw — library consumers may not have a manifest in dev)
+        // eslint-disable-next-line no-console
+        console.warn(
+          `DialogueProvider: failed to load manifest at ${charectersPath}/index.json or manifest.json — falling back to provided left/right character props. ` +
+            `To enable auto-loading, place an index.json at ${charectersPath} of shape { "characters": { "name": ["default.png","happy.png"] } }`
+        );
+        loaderInFlight.current = false;
+        setRuntimeLeftCharacters(null);
+        setRuntimeRightCharacters(null);
+        return;
+      }
+
+      // Build CharacterEntry lists.
+      const left: CharacterEntry[] = [];
+      const right: CharacterEntry[] = [];
+
+      const basePath = charectersPath.replace(/\/$/, ""); // no trailing slash
+      Object.entries(manifest.characters).forEach(([charName, files]) => {
+        // prefer default mode if present, ensure at least default exists
+        const uniqueFiles = Array.from(new Set(files));
+
+        // Ensure that default exists otherwise we still create entries but fallback won't find default asset.
+        // We will create entries for each file discovered.
+        uniqueFiles.forEach((filename) => {
+          const mode = modeFromFilename(filename); // undefined for default
+          const src = `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(filename)}`;
+          left.push({
+            name: charName,
+            mode, // undefined for default
+            src,
+          });
+          right.push({
+            name: charName,
+            mode,
+            src, // same src — rendered flipped on the right side automatically
+          });
+        });
+
+        // If no 'default.png' present, attempt to fallback by adding the first file as default (so findCharacterEntry.resolve works)
+        const hasDefault = uniqueFiles.some((f) => /^default\.[^.]+$/i.test(f));
+        if (!hasDefault && uniqueFiles.length > 0) {
+          const first = uniqueFiles[0];
+          left.push({
+            name: charName,
+            mode: undefined,
+            src: `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(first)}`,
+          });
+          right.push({
+            name: charName,
+            mode: undefined,
+            src: `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(first)}`,
+          });
+        }
+      });
+
+      setRuntimeLeftCharacters(left);
+      setRuntimeRightCharacters(right);
+      loaderInFlight.current = false;
+    };
+
+    tryLoad().catch(() => {
+      loaderInFlight.current = false;
+      // eslint-disable-next-line no-console
+      console.warn("DialogueProvider: failed to auto-load characters manifest (unexpected).");
+      setRuntimeLeftCharacters(null);
+      setRuntimeRightCharacters(null);
+    });
+  }, [charectersPath]);
+
+  // Decide which character arrays to use at runtime.
+  const leftChars = runtimeLeftCharacters ?? propLeftCharacters;
+  const rightChars = runtimeRightCharacters ?? propRightCharacters;
 
   const prepareMessages = (messages: DialogueMessage[]): InternalMessage[] => {
     return messages.map((m) => {
@@ -192,6 +285,36 @@ export function DialogueProvider({
     // providerBgFilter is a stable default (DEFAULT_BG_FILTER) so won't flip identity unexpectedly
     [providerBgFilter, currentBgFilter]
   );
+
+  // Helper: resolve character entry from runtime lists (searches name+mode first, then fallback)
+  const findCharacterEntry = (
+    name: string,
+    mode?: string
+  ): { entry?: CharacterEntry; side: "left" | "right" | "unknown" } => {
+    const searchIn = (arr?: CharacterEntry[]) => {
+      if (!arr) return undefined;
+      // try exact match name + mode
+      if (mode) {
+        const exact = arr.find((c) => c.name === name && c.mode === mode);
+        if (exact) return exact;
+      }
+      // try name + default (entry with same name and no mode)
+      let found = arr.find((c) => c.name === name && (!c.mode || c.mode === "default"));
+      if (found) return found;
+      // fallback to first entry with name
+      found = arr.find((c) => c.name === name);
+      return found;
+    };
+
+    // prefer leftChars first then rightChars (so same-name left/right work predictably)
+    const leftFound = searchIn(leftChars);
+    if (leftFound) return { entry: leftFound, side: "left" };
+
+    const rightFound = searchIn(rightChars);
+    if (rightFound) return { entry: rightFound, side: "right" };
+
+    return { entry: undefined, side: "unknown" };
+  };
 
   // core: step to given index
   const startTypingMessage = useCallback(
@@ -420,7 +543,7 @@ export function DialogueProvider({
       return {
         name: "",
         src: "",
-        side: "left",
+        side: "left" as "left" | "right",
         resolvedMode: "default",
       };
     const { entry, side } = findCharacterEntry(msg.charecter, msg.mode);
@@ -502,6 +625,15 @@ export function DialogueProvider({
           direction: rtl ? "rtl" : "ltr",
         };
 
+      // If this is the right side, flip the PNG visually (mirror) by applying scaleX(-1).
+      // We only flip the image element; bubble text remains unflipped.
+      const imgStyle: React.CSSProperties = {
+        maxHeight: options.isPinned ? "clamp(4rem, 70vh, 25rem)" : "clamp(4rem, 85vh, 25rem)",
+        width: "auto",
+        filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
+        transform: options.forSide === "right" ? "scaleX(-1)" : undefined,
+      };
+
       return (
         <div
           key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
@@ -511,11 +643,7 @@ export function DialogueProvider({
             src={resolved.src}
             alt={resolved.name}
             className="comic-character-img object-contain"
-            style={{
-              maxHeight: options.isPinned ? "clamp(4rem, 70vh, 25rem)" : "clamp(4rem, 85vh, 25rem)",
-              width: "auto",
-              filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.5))",
-            }}
+            style={imgStyle}
           />
 
           <div
@@ -554,6 +682,7 @@ export function DialogueProvider({
             src={resolved.src}
             alt={resolved.name}
             className="character-img w-[92px] h-[92px] object-cover rounded-full"
+            style={isPngSrc(resolved.src) && options.forSide === "right" ? { transform: "scaleX(-1)" } : undefined}
           />
         ) : (
           <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
@@ -717,3 +846,5 @@ export function DialogueProvider({
     </DialogueContext.Provider>
   );
 }
+
+export default DialogueProvider;
