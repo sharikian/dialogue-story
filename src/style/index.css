@@ -3,6 +3,22 @@
 @tailwind utilities;
 
 /* ------------------------------
+   Background crossfade layer
+   ------------------------------ */
+.dialogue-bg-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  transition: opacity 420ms ease;
+  opacity: 0;
+  /* ensure the bg is visually behind gradient/characters but before dialog gradient */
+  z-index: 9998;
+  pointer-events: none;
+}
+
+/* ------------------------------
    Keep only animation & tiny helpers
    ------------------------------ */
 

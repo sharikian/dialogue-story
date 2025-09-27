@@ -12,4 +12,11 @@ export type DialogueMessage = {
   textColor?: string;
   bgColor?: string;
   showTimes?: boolean; // new: if true, keep this speaker's dialogue visible when advancing
+  /**
+   * Optional background image for this message.
+   * - string: change background to this image URL (remains until next change)
+   * - null: explicitly clear background image (show nothing)
+   * - undefined: no change
+   */
+  bgImage?: string | null;
 };

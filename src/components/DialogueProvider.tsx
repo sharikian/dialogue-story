@@ -22,6 +22,7 @@ export function DialogueProvider({
   onFinished,
   mode = "arcade", // new prop, default keeps arcade behaviour
   rtl = false, // new prop, default false
+  bgImage: providerBgImage, // provider-wide background image (optional)
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<
     InternalMessage[] | null
@@ -37,6 +38,15 @@ export function DialogueProvider({
   const [pinned, setPinned] = useState<PinnedMap>({}); // store messages that should persist until next same-side message
   const typingTimer = useRef<number | null>(null);
   const resolvePromise = useRef<(() => void) | null>(null);
+
+  // Background crossfade state:
+  const [currentBg, setCurrentBg] = useState<string | null>(
+    providerBgImage ?? null
+  );
+  const [prevBg, setPrevBg] = useState<string | null>(null);
+  const [prevVisible, setPrevVisible] = useState(false);
+  const bgFadeTimeout = useRef<number | null>(null);
+  const BG_FADE_DURATION = 420; // ms, matches the other animations
 
   // flatten char lists for lookup
   const allCharacters = [...leftCharacters, ...rightCharacters];
@@ -95,11 +105,67 @@ export function DialogueProvider({
     }
   };
 
+  // cleanup bg fade timer
+  const clearBgFadeTimeout = () => {
+    if (bgFadeTimeout.current) {
+      window.clearTimeout(bgFadeTimeout.current);
+      bgFadeTimeout.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearTypingTimer();
+      clearBgFadeTimeout();
+    };
+  }, []);
+
+  // Update background (handles provider fallback + message-driven change)
+  const updateBackgroundForMessage = useCallback(
+    (newBg?: string | null) => {
+      // newBg === undefined => no change
+      if (typeof newBg === "undefined") return;
+
+      setCurrentBg((prevCur) => {
+        // If unchanged, nothing to do
+        if (newBg === prevCur) return prevCur;
+
+        // Put the previous image into prevBg so we can crossfade it out
+        if (prevCur) {
+          // clear any previous pending prev cleanup
+          clearBgFadeTimeout();
+          setPrevBg(prevCur);
+          setPrevVisible(true);
+
+          // ensure we let the browser paint the prev layer as visible, then trigger fade
+          // (use requestAnimationFrame to ensure the CSS transition fires)
+          requestAnimationFrame(() => {
+            setPrevVisible(false);
+          });
+
+          // after fade duration remove prevBg
+          bgFadeTimeout.current = window.setTimeout(() => {
+            setPrevBg(null);
+            setPrevVisible(false);
+            bgFadeTimeout.current = null;
+          }, BG_FADE_DURATION + 30);
+        }
+
+        return newBg;
+      });
+    },
+    []
+  );
+
   // core: step to given index
   const startTypingMessage = useCallback(
     (msgs: InternalMessage[], idx: number) => {
       clearTypingTimer();
       const msg = msgs[idx];
+
+      // handle background change for this message:
+      // logic: undefined -> no change, null -> clear background, string -> set that image
+      updateBackgroundForMessage(msg.bgImage);
 
       // NEW: when starting a message, clear any pinned message for the SAME SIDE.
       // This enforces: pinned (showTimes) remains visible only until the next message from the same side appears.
@@ -142,7 +208,7 @@ export function DialogueProvider({
         }
       }, interval);
     },
-    []
+    [updateBackgroundForMessage]
   );
 
   // helper: pin message if it has showTimes true
@@ -191,6 +257,13 @@ export function DialogueProvider({
       setTyping(false);
       setIsActive(false);
       setPinned({}); // clear pinned on finish
+
+      // restore provider background (if any) as the "current" state so next dialogue will start from provider image
+      // (we don't need to animate here because overlay will hide)
+      setCurrentBg(providerBgImage ?? null);
+      setPrevBg(null);
+      setPrevVisible(false);
+
       if (onFinished) onFinished();
       if (resolvePromise.current) {
         resolvePromise.current();
@@ -231,6 +304,12 @@ export function DialogueProvider({
         setTyping(false);
         setIsActive(false);
         setPinned({}); // clear pinned on finish
+
+        // restore provider background (if any)
+        setCurrentBg(providerBgImage ?? null);
+        setPrevBg(null);
+        setPrevVisible(false);
+
         if (onFinished) onFinished();
         if (resolvePromise.current) {
           resolvePromise.current();
@@ -253,6 +332,7 @@ export function DialogueProvider({
     activeMessages,
     startTypingMessage,
     onFinished,
+    providerBgImage,
   ]);
 
   // When index or activeMessages change update current message typing
@@ -272,6 +352,12 @@ export function DialogueProvider({
 
       // map and validate characters
       const prepared = prepareMessages(messages);
+
+      // start from provider background by default (messages may override in startTypingMessage)
+      setCurrentBg(providerBgImage ?? null);
+      setPrevBg(null);
+      setPrevVisible(false);
+
       setActiveMessages(prepared);
       setIndex(0);
       setIsActive(true);
@@ -282,7 +368,7 @@ export function DialogueProvider({
         resolvePromise.current = res;
       });
     },
-    [speed]
+    [speed, providerBgImage]
   );
 
   // helper: resolve character UI props for the given message
@@ -481,6 +567,47 @@ export function DialogueProvider({
             WebkitBackdropFilter: "blur(4px)",
           }}
         >
+          {/* Background layers: prev (fading out) + current (visible). These sit below the gradient to allow vignetting. */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: 9998 }}
+          >
+            {/* prev layer (fading out) */}
+            {prevBg ? (
+              <div
+                className="dialogue-bg-layer prev"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backgroundImage: `url(${prevBg})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center center",
+                  backgroundRepeat: "no-repeat",
+                  transition: `opacity ${BG_FADE_DURATION}ms ease`,
+                  opacity: prevVisible ? 1 : 0,
+                }}
+              />
+            ) : null}
+
+            {/* current layer (fading in instantly if newly set) */}
+            {currentBg ? (
+              <div
+                className="dialogue-bg-layer cur"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backgroundImage: `url(${currentBg})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center center",
+                  backgroundRepeat: "no-repeat",
+                  transition: `opacity ${BG_FADE_DURATION}ms ease`,
+                  opacity: 1,
+                }}
+              />
+            ) : null}
+          </div>
+
           {/* gradient: adds .comic modifier when comic mode */}
           <div className={`dialogue-gradient ${mode === "comic" ? "comic" : ""}`} />
 

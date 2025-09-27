@@ -9,6 +9,13 @@ export type DialogueProviderProps = {
   onFinished?: () => void; // called after full dialogue finishes
   mode?: "arcade" | "comic"; // "arcade" = original circular avatars; "comic" = full-character PNGs with comic-style bubbles
   rtl?: boolean; // when true, message/name alignment and bubble sides are displayed in RTL
+
+  /**
+   * Optional provider-wide background image.
+   * - string: default background shown for the whole dialogue until a message overrides it
+   * - null/undefined: no background (default)
+   */
+  bgImage?: string | null;
 };
 
 export type DialogueContextValue = {
