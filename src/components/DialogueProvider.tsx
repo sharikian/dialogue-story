@@ -1,3 +1,4 @@
+// src/components/DialogueProvider.tsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { DialogueContext } from "../context/DialogueContext";
 import type { DialogueProviderProps } from "../context/DialogueContext";
@@ -50,6 +51,28 @@ const modeFromFilename = (filename: string) => {
  */
 type CharactersManifest = {
   characters: Record<string, string[]>;
+};
+
+/**
+ * Parse a character key that may include a forced side suffix.
+ * Supported formats:
+ *   - "woody"           => { name: "woody", forcedSide: undefined }   // no explicit forcing
+ *   - "woody:left"      => { name: "woody", forcedSide: "left" }
+ *   - "woody:right"     => { name: "woody", forcedSide: "right" }
+ *
+ * IMPORTANT: forcedSide is only set when the user explicitly provided a suffix.
+ */
+const parseCharacterKey = (raw: string): { name: string; forcedSide?: "left" | "right" } => {
+  if (!raw) return { name: raw, forcedSide: undefined };
+  const parts = raw.split(":").map((p) => p.trim());
+  const base = parts[0] ?? raw;
+  if (parts.length > 1) {
+    const suffix = parts[1]?.toLowerCase();
+    if (suffix === "right") return { name: base, forcedSide: "right" };
+    return { name: base, forcedSide: "left" };
+  }
+  // no suffix => do not force side
+  return { name: base, forcedSide: undefined };
 };
 
 export function DialogueProvider({
@@ -287,10 +310,11 @@ export function DialogueProvider({
   );
 
   // Helper: resolve character entry from runtime lists (searches name+mode first, then fallback)
-  const findCharacterEntry = (
+  // Accepts base name (no :left/:right). Returns entry (if found) and the side where that entry was found.
+  const findCharacterEntryByName = (
     name: string,
     mode?: string
-  ): { entry?: CharacterEntry; side: "left" | "right" | "unknown" } => {
+  ): { entry?: CharacterEntry; foundOn?: "left" | "right" } => {
     const searchIn = (arr?: CharacterEntry[]) => {
       if (!arr) return undefined;
       // try exact match name + mode
@@ -306,14 +330,13 @@ export function DialogueProvider({
       return found;
     };
 
-    // prefer leftChars first then rightChars (so same-name left/right work predictably)
     const leftFound = searchIn(leftChars);
-    if (leftFound) return { entry: leftFound, side: "left" };
+    if (leftFound) return { entry: leftFound, foundOn: "left" };
 
     const rightFound = searchIn(rightChars);
-    if (rightFound) return { entry: rightFound, side: "right" };
+    if (rightFound) return { entry: rightFound, foundOn: "right" };
 
-    return { entry: undefined, side: "unknown" };
+    return { entry: undefined, foundOn: undefined };
   };
 
   // core: step to given index
@@ -328,7 +351,10 @@ export function DialogueProvider({
 
       // NEW: when starting a message, clear any pinned message for the SAME SIDE.
       // This enforces: pinned (showTimes) remains visible only until the next message from the same side appears.
-      const { side: startingSide } = findCharacterEntry(msg.charecter, msg.mode);
+      const parsed = parseCharacterKey(msg.charecter);
+      const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
+      const startingSide = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
+
       if (startingSide === "left" || startingSide === "right") {
         setPinned((p) => {
           if (!p) return p;
@@ -367,14 +393,16 @@ export function DialogueProvider({
         }
       }, interval);
     },
-    [updateBackgroundForMessage]
+    [updateBackgroundForMessage, leftChars, rightChars]
   );
 
   // helper: pin message if it has showTimes true
   const pinIfNeeded = (msg: InternalMessage | null) => {
     if (!msg) return;
     if (!msg.showTimes) return;
-    const { side } = findCharacterEntry(msg.charecter, msg.mode);
+    const parsed = parseCharacterKey(msg.charecter);
+    const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
+    const side = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
     if (side === "left") {
       setPinned((p) => ({ ...p, left: { ...msg } }));
     } else if (side === "right") {
@@ -538,6 +566,10 @@ export function DialogueProvider({
   );
 
   // helper: resolve character UI props for the given message
+  // This function now:
+  //  1) parses the raw character key (maybe with :left/:right)
+  //  2) looks up the asset entry by base name
+  //  3) decides final side = explicit msg.forcedSide (if provided) OR parsed.forcedSide OR foundOn OR default left
   const resolveCurrentCharacter = (msg: InternalMessage | null) => {
     if (!msg)
       return {
@@ -546,12 +578,18 @@ export function DialogueProvider({
         side: "left" as "left" | "right",
         resolvedMode: "default",
       };
-    const { entry, side } = findCharacterEntry(msg.charecter, msg.mode);
+
+    const parsed = parseCharacterKey(msg.charecter);
+    const { entry, foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
+
+    // final side resolution: msg.forcedSide (explicit field) > parsed.forcedSide (> foundOn) > 'left'
+    const finalSide = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
+
     return {
-      name: msg.charecter,
+      name: parsed.name,
       mode: msg.mode ?? entry?.mode ?? "default",
       src: entry?.src ?? "",
-      side,
+      side: finalSide,
     };
   };
 
@@ -717,7 +755,6 @@ export function DialogueProvider({
 
   // UI render of message bubble(s)
   const currentChar = resolveCurrentCharacter(currentMessage);
-  // const previousChar = resolveCurrentCharacter(prevMessage);
 
   // decide animation class: if previous message was same character name => consecutive animation
   const isConsecutiveSame =

@@ -19,6 +19,7 @@ export type BackgroundFilter = {
 export type DialogueMessage = {
   text: string;
   charecter: string; // note spelling matches your request
+  forcedSide?: "left" | "right";
   mode?: string;
   typeSpeed?: number; // ms per type letter
   textColor?: string;
