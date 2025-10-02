@@ -60,6 +60,7 @@ export function DialogueProvider({
   rtl = false,
   bgImage: providerBgImage,
   bgFilter: providerBgFilter = DEFAULT_BG_FILTER,
+  activeRedo = false,
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<InternalMessage[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -328,6 +329,58 @@ export function DialogueProvider({
         return;
       }
 
+      // If activeRedo is enabled, interpret click position:
+      // left half => go back, right half => go forward.
+      if (activeRedo) {
+        const mx = e.clientX;
+        const w = window.innerWidth || document.documentElement.clientWidth || 0;
+        const isLeftHalf = mx < w / 2;
+
+        if (isLeftHalf) {
+          // go back one
+          const prevIndex = Math.max(0, index - 1);
+          if (prevIndex !== index && activeMessages && prevIndex < activeMessages.length) {
+            setIndex(prevIndex);
+            startTypingMessage(activeMessages, prevIndex);
+          }
+          return;
+        }
+
+        // right half: forward (preserve pin behaviour)
+        const nextIndex = index + 1;
+        pinIfNeeded(currentMessage);
+
+        if (nextIndex < activeMessages.length) {
+          setIndex(nextIndex);
+          startTypingMessage(activeMessages, nextIndex);
+          return;
+        }
+
+        // finished
+        setActiveMessages(null);
+        setIndex(0);
+        setCurrentMessage(null);
+        setPrevMessage(null);
+        setDisplay("");
+        setTyping(false);
+        setIsActive(false);
+        setPinned({});
+        setCurrentBg(providerBgImage ?? null);
+        setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
+        setPrevBg(null);
+        setPrevBgFilter(null);
+        setPrevVisible(false);
+
+        if (onFinished) onFinished();
+        if (resolvePromise.current) {
+          resolvePromise.current();
+          resolvePromise.current = null;
+        }
+
+        return;
+      }
+
+      // default behavior (activeRedo === false)
       const nextIndex = index + 1;
       pinIfNeeded(currentMessage);
 
@@ -419,6 +472,7 @@ export function DialogueProvider({
     onFinished,
     providerBgImage,
     providerBgFilter,
+    activeRedo,
   ]);
 
   useEffect(() => {

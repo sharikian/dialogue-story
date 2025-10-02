@@ -38,6 +38,13 @@ export type DialogueProviderProps = {
    * Used for provider bgImage by default, and for messages that do not supply their own `filter`.
    */
   bgFilter?: BackgroundFilter;
+
+  /**
+   * When true, clicking the left half of the page/viewport moves the dialogue
+   * backwards (previous message) and clicking the right half moves it forwards.
+   * When false (default) clicks behave as original: advance forward, finish typing.
+   */
+  activeRedo?: boolean;
 };
 
 export type DialogueContextValue = {
