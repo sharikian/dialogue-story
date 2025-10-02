@@ -45,6 +45,11 @@ export type DialogueProviderProps = {
    * When false (default) clicks behave as original: advance forward, finish typing.
    */
   activeRedo?: boolean;
+
+  /**
+   * When true, shows a small center-bottom "Skip" button that ends the dialogue immediately.
+   */
+  canSkip?: boolean;
 };
 
 export type DialogueContextValue = {

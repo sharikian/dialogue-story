@@ -61,6 +61,7 @@ export function DialogueProvider({
   bgImage: providerBgImage,
   bgFilter: providerBgFilter = DEFAULT_BG_FILTER,
   activeRedo = false,
+  canSkip = false,
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<InternalMessage[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -317,6 +318,31 @@ export function DialogueProvider({
     if (side === "right") setPinned((p) => ({ ...p, right: { ...msg } }));
   };
 
+  const finishDialogueImmediately = useCallback(() => {
+    clearTypingTimer();
+    clearBgFadeTimeout();
+
+    setActiveMessages(null);
+    setIndex(0);
+    setCurrentMessage(null);
+    setPrevMessage(null);
+    setDisplay("");
+    setTyping(false);
+    setIsActive(false);
+    setPinned({});
+    setCurrentBg(providerBgImage ?? null);
+    setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
+    setPrevBg(null);
+    setPrevBgFilter(null);
+    setPrevVisible(false);
+
+    if (onFinished) onFinished();
+    if (resolvePromise.current) {
+      resolvePromise.current();
+      resolvePromise.current = null;
+    }
+  }, [onFinished, providerBgFilter, providerBgImage]);
+
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (!isActive || !activeMessages) return;
@@ -357,26 +383,7 @@ export function DialogueProvider({
         }
 
         // finished
-        setActiveMessages(null);
-        setIndex(0);
-        setCurrentMessage(null);
-        setPrevMessage(null);
-        setDisplay("");
-        setTyping(false);
-        setIsActive(false);
-        setPinned({});
-        setCurrentBg(providerBgImage ?? null);
-        setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
-        setPrevBg(null);
-        setPrevBgFilter(null);
-        setPrevVisible(false);
-
-        if (onFinished) onFinished();
-        if (resolvePromise.current) {
-          resolvePromise.current();
-          resolvePromise.current = null;
-        }
-
+        finishDialogueImmediately();
         return;
       }
 
@@ -391,25 +398,7 @@ export function DialogueProvider({
       }
 
       // finished
-      setActiveMessages(null);
-      setIndex(0);
-      setCurrentMessage(null);
-      setPrevMessage(null);
-      setDisplay("");
-      setTyping(false);
-      setIsActive(false);
-      setPinned({});
-      setCurrentBg(providerBgImage ?? null);
-      setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
-      setPrevBg(null);
-      setPrevBgFilter(null);
-      setPrevVisible(false);
-
-      if (onFinished) onFinished();
-      if (resolvePromise.current) {
-        resolvePromise.current();
-        resolvePromise.current = null;
-      }
+      finishDialogueImmediately();
     };
 
     const onKey = (e: KeyboardEvent) => {
@@ -433,25 +422,31 @@ export function DialogueProvider({
           return;
         }
 
-        // finished
-        setActiveMessages(null);
-        setIndex(0);
-        setCurrentMessage(null);
-        setPrevMessage(null);
-        setDisplay("");
-        setTyping(false);
-        setIsActive(false);
-        setPinned({});
-        setCurrentBg(providerBgImage ?? null);
-        setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
-        setPrevBg(null);
-        setPrevBgFilter(null);
-        setPrevVisible(false);
+        finishDialogueImmediately();
+      }
 
-        if (onFinished) onFinished();
-        if (resolvePromise.current) {
-          resolvePromise.current();
-          resolvePromise.current = null;
+      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && activeRedo) {
+        // optional keyboard support for activeRedo: left = back, right = forward
+        e.preventDefault();
+        if (e.key === "ArrowLeft") {
+          const prevIndex = Math.max(0, index - 1);
+          if (prevIndex !== index && activeMessages && prevIndex < activeMessages.length) {
+            setIndex(prevIndex);
+            startTypingMessage(activeMessages, prevIndex);
+          }
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          const nextIndex = index + 1;
+          pinIfNeeded(currentMessage);
+          if (activeMessages) {
+            if (nextIndex < activeMessages.length) {
+              setIndex(nextIndex);
+              startTypingMessage(activeMessages, nextIndex);
+              return;
+            }
+          }
+          finishDialogueImmediately();
         }
       }
     };
@@ -473,6 +468,7 @@ export function DialogueProvider({
     providerBgImage,
     providerBgFilter,
     activeRedo,
+    finishDialogueImmediately,
   ]);
 
   useEffect(() => {
@@ -720,6 +716,12 @@ export function DialogueProvider({
     return op;
   };
 
+  // Skip click handler (for the small button)
+  const handleSkipClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    finishDialogueImmediately();
+  };
+
   return (
     <DialogueContext.Provider value={{ dialogue, isActive }}>
       {children}
@@ -814,6 +816,28 @@ export function DialogueProvider({
               {rightCurrent ? renderCharacterCard(rightCurrent, { forSide: "right", isPinned: false, animate: true, comic: mode === "comic" }) : null}
             </div>
           </div>
+
+          {/* center bottom small skip button (only when canSkip is true) */}
+          {canSkip ? (
+            <div
+              style={{
+                position: "absolute",
+                bottom: 14,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 10003,
+                pointerEvents: "auto",
+              }}
+            >
+              <button
+                className="skip-button"
+                onClick={handleSkipClick}
+                aria-label="Skip dialogue"
+              >
+                Skip
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </DialogueContext.Provider>

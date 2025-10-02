@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* skip button (small, dashed border, rounded, gray background with darker dashed border) */
+.skip-button {
+  border-style: dashed;
+  border-width: 1.5px;
+  border-color: #9ca3af; /* slightly darker gray */
+  background: #e5e7eb; /* light gray bg */
+  color: #111827;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(.2,.9,.2,1), box-shadow 120ms;
+  pointer-events: auto;
+}
+.skip-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.14);
+}
+.skip-button:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+
 /* narrator banner */
 .narrator-banner {
   pointer-events: none;
