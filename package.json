@@ -1,6 +1,6 @@
 {
   "name": "dialogue-story",
-  "version": "1.3.5",
+  "version": "1.3.7",
   "description": "React + TypeScript dialogue UI (comic/arcade) with RTL support",
   "author": "Sharik (wacoinseig@gmail.com)",
   "license": "MIT",
