@@ -647,6 +647,7 @@ export function DialogueProvider({
           ? { right: options.isPinned ? "1rem" : "1rem" }
           : { left: options.isPinned ? "1rem" : "1rem" };
 
+      // NOTE: changed: use bottom anchoring so bubble sits *above* the PNG and grows upward.
       const bubbleStyle: React.CSSProperties =
         {
           background: msg.resolvedBgColor ?? "#fff",
@@ -656,11 +657,19 @@ export function DialogueProvider({
           fontFamily: rtl
             ? '"Vazirmatn", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial'
             : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-          top: options.isPinned ? "-5.5rem" : "-6rem",
+          // anchor above the image so the bubble grows upward instead of downward (prevents covering face)
+          bottom: options.isPinned ? "calc(100% + 0.75rem)" : "calc(100% + 1rem)",
           pointerEvents: options.isPinned ? "none" : "auto",
           ...posOffset,
           // ensure RTL mode doesn't unexpectedly flip text direction of bubble contents:
           direction: rtl ? "rtl" : "ltr",
+
+          // prevent bubble from growing indefinitely:
+          maxHeight: "50vh",
+          overflowY: "auto",
+          boxSizing: "border-box",
+          paddingRight: "8px",
+          WebkitOverflowScrolling: "touch",
         };
 
       // If this is the right side, flip the PNG visually (mirror) by applying scaleX(-1).
@@ -689,10 +698,10 @@ export function DialogueProvider({
             style={bubbleStyle}
             aria-hidden={options.isPinned ? "false" : "false"}
           >
-            <div className={`text-[12px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>
+            <div className={`text-[14px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>
               {resolved.name}
             </div>
-            <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[18px] leading-[1.2] whitespace-pre-wrap break-words`}>
+            <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}>
               {/* For pinned show full message (no typing), for current allow typing via `display` state */}
               {options.isPinned ? msg.text : display}
             </div>
@@ -740,12 +749,19 @@ export function DialogueProvider({
               : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
             pointerEvents: options.isPinned ? "none" : "auto",
             direction: rtl ? "rtl" : "ltr",
+
+            // Prevent arcade bubble from growing too tall and overlapping; allow internal scroll.
+            maxHeight: "40vh",
+            overflowY: "auto",
+            boxSizing: "border-box",
+            paddingRight: "8px",
+            WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className={`${effectiveTextAlignClass} text-[12px] font-bold opacity-90 mb-1.5 name`}>
+          <div className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}>
             {resolved.name}
           </div>
-          <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[18px] leading-[1.2] whitespace-pre-wrap break-words`}>
+          <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}>
             {options.isPinned ? msg.text : display}
           </div>
         </div>
