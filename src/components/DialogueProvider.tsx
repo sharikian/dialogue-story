@@ -8,12 +8,6 @@ import type {
   BackgroundFilter,
 } from "../types/dialogue";
 
-/**
- * FIX:
- * Prevent ephemeral default object identity from causing repeated recreation
- * of callbacks/effects (which was resetting typing/display). Use a module-level
- * frozen default object so its identity is stable across renders.
- */
 const DEFAULT_BG_FILTER: Readonly<BackgroundFilter> = Object.freeze({
   fade: 0,
   blur: 0,
@@ -28,34 +22,19 @@ type InternalMessage = DialogueMessage & {
 type PinnedMap = {
   left?: InternalMessage;
   right?: InternalMessage;
+  top?: InternalMessage;
 };
 
-/**
- * Helper: turns a filename like "proud.png" into mode "proud".
- * "default.png" will be treated specially (no mode property).
- */
 const modeFromFilename = (filename: string) => {
   const name = filename.replace(/\.[^.]+$/, "");
   if (name.toLowerCase() === "default") return undefined;
   return name;
 };
 
-/**
- * Helper: manifest shape expected at `${charectersPath}/index.json`
- * {
- *   "characters": {
- *     "andy": ["default.png","out.png","proud.png","surprised.png"],
- *     ...
- *   }
- * }
- */
 type CharactersManifest = {
   characters: Record<string, string[]>;
 };
 
-/**
- * Parse a character key that may include a forced side suffix.
- */
 const parseCharacterKey = (raw: string): { name: string; forcedSide?: "left" | "right" } => {
   if (!raw) return { name: raw, forcedSide: undefined };
   const parts = raw.split(":").map((p) => p.trim());
@@ -72,7 +51,7 @@ export function DialogueProvider({
   children,
   leftCharacters: propLeftCharacters = [],
   rightCharacters: propRightCharacters = [],
-  charectersPath, // intentionally spelled
+  charectersPath,
   speed = 35,
   onFinished,
   mode = "arcade",
@@ -91,7 +70,6 @@ export function DialogueProvider({
   const typingTimer = useRef<number | null>(null);
   const resolvePromise = useRef<(() => void) | null>(null);
 
-  // Background crossfade state
   const [currentBg, setCurrentBg] = useState<string | null>(providerBgImage ?? null);
   const [currentBgFilter, setCurrentBgFilter] = useState<BackgroundFilter | null>(providerBgFilter ?? DEFAULT_BG_FILTER);
   const [prevBg, setPrevBg] = useState<string | null>(null);
@@ -100,7 +78,6 @@ export function DialogueProvider({
   const bgFadeTimeout = useRef<number | null>(null);
   const BG_FADE_DURATION = 420;
 
-  // runtime characters
   const [runtimeLeftCharacters, setRuntimeLeftCharacters] = useState<CharacterEntry[] | null>(null);
   const [runtimeRightCharacters, setRuntimeRightCharacters] = useState<CharacterEntry[] | null>(null);
   const loaderInFlight = useRef(false);
@@ -273,6 +250,7 @@ export function DialogueProvider({
 
       const parsed = parseCharacterKey(msg.charecter);
       const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
+
       const startingSide = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
 
       if (startingSide === "left" || startingSide === "right") {
@@ -285,6 +263,7 @@ export function DialogueProvider({
         });
       }
 
+      // If narrator (ravi), do not remove pinned.top here; narrator stays until explicitly cleared by advancing message logic
       setCurrentMessage(msg);
       setPrevMessage(idx > 0 ? msgs[idx - 1] : null);
       setDisplay("");
@@ -310,7 +289,14 @@ export function DialogueProvider({
   const pinIfNeeded = (msg: InternalMessage | null) => {
     if (!msg) return;
     if (!msg.showTimes) return;
+
     const parsed = parseCharacterKey(msg.charecter);
+    // special narrator name
+    if (parsed.name && parsed.name.toLowerCase() === "ravi") {
+      setPinned((p) => ({ ...p, top: { ...msg } }));
+      return;
+    }
+
     const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
     const side = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
     if (side === "left") setPinned((p) => ({ ...p, left: { ...msg } }));
@@ -483,7 +469,6 @@ export function DialogueProvider({
     const animateClass = options.animate ? (isConsecutiveSame ? "animate-change" : "animate-in") : "";
     const isComic = options.comic ?? mode === "comic";
 
-    // Comic mode with PNG (full character)
     if (isComic && isPngSrc(resolved.src)) {
       const posOffset =
         options.forSide === "left"
@@ -511,7 +496,7 @@ export function DialogueProvider({
         boxSizing: "border-box",
         paddingRight: "8px",
         WebkitOverflowScrolling: "touch",
-        maxWidth: "100%", // allow bubble to expand to container
+        maxWidth: "100%",
       };
 
       const imgStyle: React.CSSProperties = {
@@ -538,7 +523,6 @@ export function DialogueProvider({
       );
     }
 
-    // Arcade / fallback: circular avatar + bubble
     const arcadeTransformOrigin = rtl
       ? options.forSide === "left"
         ? "right bottom"
@@ -579,7 +563,7 @@ export function DialogueProvider({
             boxSizing: "border-box",
             paddingRight: "8px",
             WebkitOverflowScrolling: "touch",
-            maxWidth: "100%", // allow bubble to expand to container
+            maxWidth: "100%",
           }}
         >
           <div className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}>{resolved.name}</div>
@@ -591,12 +575,59 @@ export function DialogueProvider({
     );
   };
 
+  const renderNarrator = (msg: InternalMessage, options?: { isPinned?: boolean }) => {
+    const bubbleStyle: React.CSSProperties = {
+      maxWidth: "min(1100px, 92%)",
+      margin: "0 auto",
+      padding: "10px 14px",
+      borderRadius: "12px",
+      borderStyle: "dashed",
+      borderWidth: "2px",
+      background: "rgba(18,18,20,0.76)",
+      color: "#f6f7f9",
+      boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
+      pointerEvents: "none",
+      direction: rtl ? "rtl" : "ltr",
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+    };
+
+    const nameStyle: React.CSSProperties = {
+      fontSize: "13px",
+      opacity: 0.85,
+      fontWeight: 700,
+      alignSelf: rtl ? "flex-end" : "flex-start",
+    };
+
+    const textStyle: React.CSSProperties = {
+      fontSize: "16px",
+      lineHeight: 1.25,
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word",
+    };
+
+    return (
+      <div className={`narrator-banner ${options?.isPinned ? "pinned" : "current"}`} style={{ width: "100%", display: "flex", justifyContent: "center", pointerEvents: "none" }} key={`ravi-${options?.isPinned ? "pinned" : "cur"}`}>
+        <div style={bubbleStyle} aria-live="polite">
+          <div style={nameStyle}>پیام راوی</div>
+          <div style={textStyle}>{options?.isPinned ? msg.text : display}</div>
+        </div>
+      </div>
+    );
+  };
+
   const currentChar = resolveCurrentCharacter(currentMessage);
   const isConsecutiveSame = currentMessage && prevMessage && currentMessage.charecter === prevMessage.charecter;
   const leftPinned = pinned.left ?? null;
   const rightPinned = pinned.right ?? null;
-  const leftCurrent = currentChar.side === "left" && currentMessage ? currentMessage : null;
-  const rightCurrent = currentChar.side === "right" && currentMessage ? currentMessage : null;
+  const topPinned = pinned.top ?? null;
+
+  const topCurrent = currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() === "ravi" ? currentMessage : null;
+  // avoid rendering ravi in side slots
+  const leftCurrent = currentChar.side === "left" && currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() !== "ravi" ? currentMessage : null;
+  const rightCurrent = currentChar.side === "right" && currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() !== "ravi" ? currentMessage : null;
+
   const opacityFromFade = (f?: number) => {
     const fade = typeof f === "number" ? f : 0;
     const op = 1 - Math.min(1, Math.max(0, fade));
@@ -615,6 +646,12 @@ export function DialogueProvider({
             WebkitBackdropFilter: "blur(4px)",
           }}
         >
+          {/* top narrator slot */}
+          <div style={{ position: "absolute", top: 18, left: 0, right: 0, zIndex: 10002, display: "flex", justifyContent: "center", pointerEvents: "none", padding: "0 12px" }}>
+            {topPinned ? renderNarrator(topPinned, { isPinned: true }) : null}
+            {topCurrent ? renderNarrator(topCurrent, { isPinned: false }) : null}
+          </div>
+
           {/* Background layers */}
           <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ zIndex: 9998 }}>
             {prevBg ? (
@@ -663,7 +700,7 @@ export function DialogueProvider({
             aria-live="polite"
             style={{ maxWidth: "none" }}
           >
-            {/* Left slot: use calc so left+right fill nearly 100% with a small gap */}
+            {/* Left slot */}
             <div
               data-side="left"
               className={`w-auto flex flex-col items-end min-h-[120px] ${

@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* narrator banner */
+.narrator-banner {
+  pointer-events: none;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  box-sizing: border-box;
+  z-index: 10002;
+}
+.narrator-banner > div {
+  transition: opacity 260ms cubic-bezier(.2,.9,.2,1), transform 260ms cubic-bezier(.2,.9,.2,1);
+}
+.narrator-banner.current > div { opacity: 1; transform: translateY(0); }
+.narrator-banner.pinned > div { opacity: 1; transform: translateY(0); }
+
 /* Ensure overlay responds quickly to taps in mobile / WebView and remove tap highlight */
 .dialogue-overlay {
   touch-action: manipulation;
