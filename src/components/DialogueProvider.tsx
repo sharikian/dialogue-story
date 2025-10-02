@@ -253,6 +253,17 @@ export function DialogueProvider({
       updateBackgroundForMessage(msg.bgImage, msg.filter ?? null);
 
       const parsed = parseCharacterKey(msg.charecter);
+
+      // If starting a new ravi message, clear any previously pinned top narrator,
+      // so the old pinned box doesn't remain alongside the new current ravi.
+      if (parsed.name && parsed.name.toLowerCase() === "ravi") {
+        setPinned((p) => {
+          const np = { ...p };
+          if (np.top) delete np.top;
+          return np;
+        });
+      }
+
       const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
 
       const startingSide = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
