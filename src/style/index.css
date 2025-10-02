@@ -2,15 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* narrator banner */
+.narrator-banner {
+  pointer-events: none;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  box-sizing: border-box;
+  z-index: 10002;
+}
+.narrator-banner > div {
+  transition: opacity 260ms cubic-bezier(.2,.9,.2,1), transform 260ms cubic-bezier(.2,.9,.2,1);
+}
+.narrator-banner.current > div { opacity: 1; transform: translateY(0); }
+.narrator-banner.pinned > div { opacity: 1; transform: translateY(0); }
+
 /* Ensure overlay responds quickly to taps in mobile / WebView and remove tap highlight */
 .dialogue-overlay {
   touch-action: manipulation;
   -webkit-tap-highlight-color: rgba(0,0,0,0);
 }
 
-/* ------------------------------
-   Background crossfade layer
-   ------------------------------ */
+/* Background crossfade layer */
 .dialogue-bg-layer {
   position: absolute;
   inset: 0;
@@ -19,16 +33,11 @@
   background-repeat: no-repeat;
   transition: opacity 420ms ease;
   opacity: 0;
-  /* ensure the bg is visually behind gradient/characters but before dialog gradient */
   z-index: 9998;
   pointer-events: none;
 }
 
-/* ------------------------------
-   Keep only animation & tiny helpers
-   ------------------------------ */
-
-/* typing caret effect (kept in CSS because it uses ::after) */
+/* Typing caret effect */
 .text.typing::after {
   content: "";
   display: inline-block;
@@ -39,24 +48,16 @@
   animation: blink 900ms steps(1) infinite;
   vertical-align: bottom;
 }
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
+@keyframes blink { 0%,50% { opacity: 1 } 51%,100% { opacity: 0 } }
 
-/* entrance/change animations (kept in CSS) */
-.animate-in {
-  animation: popIn 420ms cubic-bezier(.2,.9,.2,1);
-}
+/* entrance/change animations */
+.animate-in { animation: popIn 420ms cubic-bezier(.2,.9,.2,1); }
 @keyframes popIn {
   0% { transform: translateY(26px) scale(0.88) rotate(-6deg); opacity: 0; }
   60% { transform: translateY(-6px) scale(1.04) rotate(3deg); opacity: 1; }
   100% { transform: translateY(0) scale(1) rotate(0deg); }
 }
-
-.animate-change {
-  animation: changePop 520ms cubic-bezier(.2,.9,.2,1);
-}
+.animate-change { animation: changePop 520ms cubic-bezier(.2,.9,.2,1); }
 @keyframes changePop {
   0% { transform: translateY(36px) scale(0.8) rotate(-10deg); opacity: 0; }
   50% { transform: translateY(-10px) scale(1.08) rotate(6deg); opacity: 1; }
@@ -64,47 +65,46 @@
 }
 
 /* small extra effect for image scaling on update */
-.consecutive .character-img {
-  transform: translateY(0) scale(1.06) rotate(-2deg);
-}
+.consecutive .character-img { transform: translateY(0) scale(1.06) rotate(-2deg); }
 
-/* character image minor transition and shadow (kept in CSS because it's a fine grain visual) */
+/* character image transition + shadow */
+/* NOTE: character size is intentionally large and consistent across mobile & desktop */
 .character-img {
   transform-origin: center bottom;
   transition: transform 280ms cubic-bezier(.2,.9,.2,1);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+
+  /* keep character size large on all viewports (user requested no reduction on mobile) */
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 9999px;
 }
 
-/* comic-mode full-character helper (applies to PNGs in comic mode)
-   use filter: drop-shadow so shadow follows non-transparent PNG pixels */
+/* comic-mode full-character helper */
 .comic-character-img {
   transform-origin: center bottom;
   transition: transform 280ms cubic-bezier(.2,.9,.2,1);
-  /* keep actual drop shadow defined in component inline style for reliability,
-     but provide a CSS fallback as well: */
   filter: drop-shadow(0 20px 40px rgba(0,0,0,0.45));
+  max-height: 75vh;
+  width: auto;
 }
 
-/* bubble transitions (kept to match animation timing precisely) */
+/* bubble transitions */
 .bubble {
   transition: transform 260ms cubic-bezier(.2,.9,.2,1), box-shadow 160ms;
-  /* ensure bubbles are scrollable internally if they reach height limits */
   -webkit-overflow-scrolling: touch;
-  /* default padding is controlled inline but keep nice box-sizing */
   box-sizing: border-box;
 }
 
-/* tiny helper for gradient element (kept here because it's raw linear-gradient) */
+/* gradient background / vignettes */
 .dialogue-gradient {
   position: absolute;
   inset: 0;
   background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.0) 60%);
   pointer-events: none;
 }
-
-/* comic-mode gradient: heavier sides (left & right) extending toward center and top */
 .dialogue-gradient.comic {
-  /* combine radial gradients on left/right with a light top fade to create stronger side vignettes */
   background-image:
     radial-gradient(ellipse at left bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 70%),
     radial-gradient(ellipse at right bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 70%),
@@ -113,78 +113,47 @@
   pointer-events: none;
 }
 
-/* ---------------------------
-   Responsive fixes for comic-mode on small screens
-   - make text smaller
-   - increase bubble max width
-   - center the bubble at top-center of PNG (override inline right/left)
-   - NOTE: we now use bottom anchoring (bubble sits above the character image)
-   --------------------------- */
+/* Mobile comic-mode: allow bubbles to expand to their side container (no centering override) */
+/* This preserves the "large bubble width" behavior even on narrow screens */
 @media (max-width: 720px) {
-  /* target the comic overlay wrapper + bubbles */
   .comic-mode .bubble {
-    /* increase allowable width and center horizontally above the character */
-    max-width: 80% !important;
-    left: 50% !important;
+    max-width: 100% !important;
+    left: auto !important;
     right: auto !important;
-    transform: translateX(-50%) !important;
-    /* anchor above the image using bottom (instead of top) */
+    transform: none !important;
+    /* keep bubble anchored above character image */
     bottom: calc(100% + 0.8rem) !important;
-    /* ensure bubble is centered visually and not touching edges */
     padding-left: 10px !important;
     padding-right: 10px !important;
-    text-align: center !important;
+    text-align: left !important;
     pointer-events: auto;
     max-height: 55vh !important;
     overflow-y: auto !important;
   }
 
-  /* make inner message text smaller but still readable and slightly tighter line-height */
-  .comic-mode .bubble .text {
-    font-size: 16px !important;
-    line-height: 1.15 !important;
-  }
-
-  /* reduce name label size slightly */
-  .comic-mode .bubble .name {
-    font-size: 12px !important;
-  }
-
-  /* improve bubble vertical spacing on small screens */
-  .comic-mode .comic-character-img {
-    max-height: 60vh !important;
-  }
+  .comic-mode .bubble .text { font-size: 16px !important; line-height: 1.15 !important; }
+  .comic-mode .bubble .name { font-size: 12px !important; }
+  .comic-mode .comic-character-img { max-height: 60vh !important; }
 }
 
-/* increase default bubble text for arcade/fallback mode (better for kids) */
-.bubble .text {
-  font-size: 20px;
-  line-height: 1.25;
-}
+/* bubble text & name default sizes */
+.bubble .text { font-size: 20px; line-height: 1.25; }
+.bubble .name { font-size: 14px; }
 
-/* name label slightly larger for readability */
-.bubble .name {
-  font-size: 14px;
-}
+/* Scrollbar styling */
+.bubble::-webkit-scrollbar { width: 8px; height: 8px; }
+.bubble::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 999px; }
+.bubble::-webkit-scrollbar-track { background: transparent; }
 
-/* Scrollbar styling (simple, non-distracting) */
-.bubble::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.bubble::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.15);
-  border-radius: 999px;
-}
-.bubble::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Accessibility */
+.bubble:focus { outline: none; }
 
-/* Accessibility: ensure focused bubble scrolls nicely */
-.bubble:focus {
-  outline: none;
+/* Desktop / large screens: keep size consistent but slightly larger text for readability */
+@media (min-width: 851px) {
+  .character-img { width: 140px; height: 140px; box-shadow: 0 14px 44px rgba(0,0,0,0.5); }
+  .comic-character-img { max-height: 75vh; }
+  .bubble .text { font-size: 24px !important; line-height: 1.18 !important; }
+  .bubble .name { font-size: 15px !important; }
+  .comic-mode .bubble { max-width: 100% !important; }
+  .bubble { max-width: 100% !important; }
 }
-
-/* ---------------------------
-  Keep rest of styles untouched
---------------------------- */

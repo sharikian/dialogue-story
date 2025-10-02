@@ -8,12 +8,6 @@ import type {
   BackgroundFilter,
 } from "../types/dialogue";
 
-/**
- * FIX:
- * Prevent ephemeral default object identity from causing repeated recreation
- * of callbacks/effects (which was resetting typing/display). Use a module-level
- * frozen default object so its identity is stable across renders.
- */
 const DEFAULT_BG_FILTER: Readonly<BackgroundFilter> = Object.freeze({
   fade: 0,
   blur: 0,
@@ -23,45 +17,26 @@ type InternalMessage = DialogueMessage & {
   resolvedTypeSpeed: number;
   resolvedTextColor: string;
   resolvedBgColor: string;
+  resolvedFontSize?: number | string;
+  resolvedFontWeight?: number | string;
 };
 
 type PinnedMap = {
   left?: InternalMessage;
   right?: InternalMessage;
+  top?: InternalMessage;
 };
 
-/**
- * Helper: turns a filename like "proud.png" into mode "proud".
- * "default.png" will be treated specially (no mode property).
- */
 const modeFromFilename = (filename: string) => {
   const name = filename.replace(/\.[^.]+$/, "");
   if (name.toLowerCase() === "default") return undefined;
   return name;
 };
 
-/**
- * Helper: manifest shape expected at `${charectersPath}/index.json`
- * {
- *   "characters": {
- *     "andy": ["default.png","out.png","proud.png","surprised.png"],
- *     ...
- *   }
- * }
- */
 type CharactersManifest = {
   characters: Record<string, string[]>;
 };
 
-/**
- * Parse a character key that may include a forced side suffix.
- * Supported formats:
- *   - "woody"           => { name: "woody", forcedSide: undefined }   // no explicit forcing
- *   - "woody:left"      => { name: "woody", forcedSide: "left" }
- *   - "woody:right"     => { name: "woody", forcedSide: "right" }
- *
- * IMPORTANT: forcedSide is only set when the user explicitly provided a suffix.
- */
 const parseCharacterKey = (raw: string): { name: string; forcedSide?: "left" | "right" } => {
   if (!raw) return { name: raw, forcedSide: undefined };
   const parts = raw.split(":").map((p) => p.trim());
@@ -71,7 +46,6 @@ const parseCharacterKey = (raw: string): { name: string; forcedSide?: "left" | "
     if (suffix === "right") return { name: base, forcedSide: "right" };
     return { name: base, forcedSide: "left" };
   }
-  // no suffix => do not force side
   return { name: base, forcedSide: undefined };
 };
 
@@ -79,54 +53,43 @@ export function DialogueProvider({
   children,
   leftCharacters: propLeftCharacters = [],
   rightCharacters: propRightCharacters = [],
-  charectersPath, // <-- new prop (intentionally spelled like this per your request)
+  charectersPath,
   speed = 35,
   onFinished,
-  mode = "arcade", // new prop, default keeps arcade behaviour
-  rtl = false, // new prop, default false
-  bgImage: providerBgImage, // provider-wide background image (optional)
-  // use stable default object identity to avoid re-creating callbacks/effects each render
+  mode = "arcade",
+  rtl = false,
+  bgImage: providerBgImage,
   bgFilter: providerBgFilter = DEFAULT_BG_FILTER,
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<InternalMessage[] | null>(null);
   const [index, setIndex] = useState(0);
-  const [display, setDisplay] = useState(""); // current typed text
+  const [display, setDisplay] = useState("");
   const [typing, setTyping] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [currentMessage, setCurrentMessage] = useState<InternalMessage | null>(null);
   const [prevMessage, setPrevMessage] = useState<InternalMessage | null>(null);
-  const [pinned, setPinned] = useState<PinnedMap>({}); // store messages that should persist until next same-side message
+  const [pinned, setPinned] = useState<PinnedMap>({});
   const typingTimer = useRef<number | null>(null);
   const resolvePromise = useRef<(() => void) | null>(null);
 
-  // Background crossfade state:
   const [currentBg, setCurrentBg] = useState<string | null>(providerBgImage ?? null);
   const [currentBgFilter, setCurrentBgFilter] = useState<BackgroundFilter | null>(providerBgFilter ?? DEFAULT_BG_FILTER);
   const [prevBg, setPrevBg] = useState<string | null>(null);
   const [prevBgFilter, setPrevBgFilter] = useState<BackgroundFilter | null>(null);
   const [prevVisible, setPrevVisible] = useState(false);
   const bgFadeTimeout = useRef<number | null>(null);
-  const BG_FADE_DURATION = 420; // ms, matches the other animations
+  const BG_FADE_DURATION = 420;
 
-  // -----------------------------
-  // Runtime-resolved character entries
-  // If charectersPath is provided we will attempt to fetch a manifest and build
-  // both left and right character lists. Otherwise we use propLeftCharacters/propRightCharacters.
-  // -----------------------------
   const [runtimeLeftCharacters, setRuntimeLeftCharacters] = useState<CharacterEntry[] | null>(null);
   const [runtimeRightCharacters, setRuntimeRightCharacters] = useState<CharacterEntry[] | null>(null);
   const loaderInFlight = useRef(false);
 
   useEffect(() => {
-    // If user provided charectersPath, try to load manifest and create entries.
     if (!charectersPath) {
-      // clear runtime lists (use explicit props)
       setRuntimeLeftCharacters(null);
       setRuntimeRightCharacters(null);
       return;
     }
-
-    // Avoid duplicate loads
     if (loaderInFlight.current) return;
     loaderInFlight.current = true;
 
@@ -147,17 +110,14 @@ export function DialogueProvider({
             break;
           }
         } catch (err) {
-          // continue to next try
+          // continue
         }
       }
 
       if (!manifest) {
-        // failed to load manifest — log and fallback to props
-        // (we don't throw — library consumers may not have a manifest in dev)
         // eslint-disable-next-line no-console
         console.warn(
-          `DialogueProvider: failed to load manifest at ${charectersPath}/index.json or manifest.json — falling back to provided left/right character props. ` +
-            `To enable auto-loading, place an index.json at ${charectersPath} of shape { "characters": { "name": ["default.png","happy.png"] } }`
+          `DialogueProvider: failed to load manifest at ${charectersPath}/index.json or manifest.json — falling back to provided left/right character props.`
         );
         loaderInFlight.current = false;
         setRuntimeLeftCharacters(null);
@@ -165,46 +125,23 @@ export function DialogueProvider({
         return;
       }
 
-      // Build CharacterEntry lists.
       const left: CharacterEntry[] = [];
       const right: CharacterEntry[] = [];
-
-      const basePath = charectersPath.replace(/\/$/, ""); // no trailing slash
+      const basePath = charectersPath.replace(/\/$/, "");
       Object.entries(manifest.characters).forEach(([charName, files]) => {
-        // prefer default mode if present, ensure at least default exists
         const uniqueFiles = Array.from(new Set(files));
-
-        // Ensure that default exists otherwise we still create entries but fallback won't find default asset.
-        // We will create entries for each file discovered.
         uniqueFiles.forEach((filename) => {
-          const mode = modeFromFilename(filename); // undefined for default
+          const mode = modeFromFilename(filename);
           const src = `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(filename)}`;
-          left.push({
-            name: charName,
-            mode, // undefined for default
-            src,
-          });
-          right.push({
-            name: charName,
-            mode,
-            src, // same src — rendered flipped on the right side automatically
-          });
+          left.push({ name: charName, mode, src });
+          right.push({ name: charName, mode, src });
         });
 
-        // If no 'default.png' present, attempt to fallback by adding the first file as default (so findCharacterEntry.resolve works)
         const hasDefault = uniqueFiles.some((f) => /^default\.[^.]+$/i.test(f));
         if (!hasDefault && uniqueFiles.length > 0) {
           const first = uniqueFiles[0];
-          left.push({
-            name: charName,
-            mode: undefined,
-            src: `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(first)}`,
-          });
-          right.push({
-            name: charName,
-            mode: undefined,
-            src: `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(first)}`,
-          });
+          left.push({ name: charName, mode: undefined, src: `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(first)}` });
+          right.push({ name: charName, mode: undefined, src: `${basePath}/${encodeURIComponent(charName)}/${encodeURIComponent(first)}` });
         }
       });
 
@@ -222,20 +159,18 @@ export function DialogueProvider({
     });
   }, [charectersPath]);
 
-  // Decide which character arrays to use at runtime.
   const leftChars = runtimeLeftCharacters ?? propLeftCharacters;
   const rightChars = runtimeRightCharacters ?? propRightCharacters;
 
-  const prepareMessages = (messages: DialogueMessage[]): InternalMessage[] => {
-    return messages.map((m) => {
-      return {
-        ...m,
-        resolvedTypeSpeed: m.typeSpeed ?? speed,
-        resolvedTextColor: m.textColor ?? "#000000",
-        resolvedBgColor: m.bgColor ?? "#ffffff",
-      };
-    });
-  };
+  const prepareMessages = (messages: DialogueMessage[]): InternalMessage[] =>
+    messages.map((m) => ({
+      ...m,
+      resolvedTypeSpeed: m.typeSpeed ?? speed,
+      resolvedTextColor: m.textColor ?? "#000000",
+      resolvedBgColor: m.bgColor ?? "#ffffff",
+      resolvedFontSize: m.fontSize,
+      resolvedFontWeight: m.fontWeight,
+    }));
 
   const clearTypingTimer = () => {
     if (typingTimer.current) {
@@ -244,7 +179,6 @@ export function DialogueProvider({
     }
   };
 
-  // cleanup bg fade timer
   const clearBgFadeTimeout = () => {
     if (bgFadeTimeout.current) {
       window.clearTimeout(bgFadeTimeout.current);
@@ -259,39 +193,23 @@ export function DialogueProvider({
     };
   }, []);
 
-  // Update background (handles provider fallback + message-driven change)
-  // newBg === undefined => no change; newBg === null => clear background
   const updateBackgroundForMessage = useCallback(
     (newBg?: string | null, filter?: BackgroundFilter | null) => {
-      // no change
       if (typeof newBg === "undefined") return;
-
-      // use filter fallback: message-specific filter -> provider filter -> defaults
-      const targetFilter: BackgroundFilter | null =
-        filter ?? providerBgFilter ?? DEFAULT_BG_FILTER;
+      const targetFilter: BackgroundFilter | null = filter ?? providerBgFilter ?? DEFAULT_BG_FILTER;
 
       setCurrentBg((prevCur) => {
-        // If unchanged (same URL and same filter) -> nothing to do
         const sameUrl = prevCur === newBg;
         const sameFilter =
-          JSON.stringify(currentBgFilter ?? {}) ===
-          JSON.stringify(targetFilter ?? {});
+          JSON.stringify(currentBgFilter ?? {}) === JSON.stringify(targetFilter ?? {});
         if (sameUrl && sameFilter) return prevCur;
 
-        // if previous current exists, push to prev layer for crossfade
         if (prevCur) {
-          // clear any previous pending prev cleanup
           clearBgFadeTimeout();
           setPrevBg(prevCur);
           setPrevBgFilter(currentBgFilter ?? null);
           setPrevVisible(true);
-
-          // ensure we let the browser paint the prev layer as visible, then trigger fade
-          requestAnimationFrame(() => {
-            setPrevVisible(false);
-          });
-
-          // after fade duration remove prevBg + prev filter
+          requestAnimationFrame(() => setPrevVisible(false));
           bgFadeTimeout.current = window.setTimeout(() => {
             setPrevBg(null);
             setPrevBgFilter(null);
@@ -300,76 +218,63 @@ export function DialogueProvider({
           }, BG_FADE_DURATION + 30);
         }
 
-        // set new current bg and its filter
         setCurrentBgFilter(targetFilter);
         return newBg;
       });
     },
-    // providerBgFilter is a stable default (DEFAULT_BG_FILTER) so won't flip identity unexpectedly
     [providerBgFilter, currentBgFilter]
   );
 
-  // Helper: resolve character entry from runtime lists (searches name+mode first, then fallback)
-  // Accepts base name (no :left/:right). Returns entry (if found) and the side where that entry was found.
-  const findCharacterEntryByName = (
-    name: string,
-    mode?: string
-  ): { entry?: CharacterEntry; foundOn?: "left" | "right" } => {
+  const findCharacterEntryByName = (name: string, mode?: string) => {
     const searchIn = (arr?: CharacterEntry[]) => {
       if (!arr) return undefined;
-      // try exact match name + mode
       if (mode) {
         const exact = arr.find((c) => c.name === name && c.mode === mode);
         if (exact) return exact;
       }
-      // try name + default (entry with same name and no mode)
       let found = arr.find((c) => c.name === name && (!c.mode || c.mode === "default"));
       if (found) return found;
-      // fallback to first entry with name
       found = arr.find((c) => c.name === name);
       return found;
     };
 
     const leftFound = searchIn(leftChars);
-    if (leftFound) return { entry: leftFound, foundOn: "left" };
-
+    if (leftFound) return { entry: leftFound, foundOn: "left" as const };
     const rightFound = searchIn(rightChars);
-    if (rightFound) return { entry: rightFound, foundOn: "right" };
-
+    if (rightFound) return { entry: rightFound, foundOn: "right" as const };
     return { entry: undefined, foundOn: undefined };
   };
 
-  // core: step to given index
   const startTypingMessage = useCallback(
     (msgs: InternalMessage[], idx: number) => {
       clearTypingTimer();
       const msg = msgs[idx];
 
-      // handle background change for this message:
-      // logic: undefined => no change, null => clear background, string => set that image
       updateBackgroundForMessage(msg.bgImage, msg.filter ?? null);
 
-      // NEW: when starting a message, clear any pinned message for the SAME SIDE.
-      // This enforces: pinned (showTimes) remains visible only until the next message from the same side appears.
       const parsed = parseCharacterKey(msg.charecter);
+
+      // If starting a new ravi message, clear any previously pinned top narrator,
+      // so the old pinned box doesn't remain alongside the new current ravi.
+      if (parsed.name && parsed.name.toLowerCase() === "ravi") {
+        setPinned((p) => {
+          const np = { ...p };
+          if (np.top) delete np.top;
+          return np;
+        });
+      }
+
       const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
+
       const startingSide = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
 
       if (startingSide === "left" || startingSide === "right") {
         setPinned((p) => {
           if (!p) return p;
-          // if pinned exists for this side, remove it
-          if (startingSide === "left" && p.left) {
-            const np = { ...p };
-            delete np.left;
-            return np;
-          }
-          if (startingSide === "right" && p.right) {
-            const np = { ...p };
-            delete np.right;
-            return np;
-          }
-          return p;
+          const np = { ...p };
+          if (startingSide === "left" && np.left) delete np.left;
+          if (startingSide === "right" && np.right) delete np.right;
+          return np;
         });
       }
 
@@ -383,7 +288,6 @@ export function DialogueProvider({
       let pos = 0;
       const interval = Math.max(1, msg.resolvedTypeSpeed);
 
-      // typing function adds letters one by one
       typingTimer.current = window.setInterval(() => {
         pos += 1;
         setDisplay(full.slice(0, pos));
@@ -396,27 +300,27 @@ export function DialogueProvider({
     [updateBackgroundForMessage, leftChars, rightChars]
   );
 
-  // helper: pin message if it has showTimes true
   const pinIfNeeded = (msg: InternalMessage | null) => {
     if (!msg) return;
     if (!msg.showTimes) return;
+
     const parsed = parseCharacterKey(msg.charecter);
+    if (parsed.name && parsed.name.toLowerCase() === "ravi") {
+      setPinned((p) => ({ ...p, top: { ...msg } }));
+      return;
+    }
+
     const { foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
     const side = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
-    if (side === "left") {
-      setPinned((p) => ({ ...p, left: { ...msg } }));
-    } else if (side === "right") {
-      setPinned((p) => ({ ...p, right: { ...msg } }));
-    }
+    if (side === "left") setPinned((p) => ({ ...p, left: { ...msg } }));
+    if (side === "right") setPinned((p) => ({ ...p, right: { ...msg } }));
   };
 
-  // click/keyboard to advance
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (!isActive || !activeMessages) return;
       e.preventDefault();
 
-      // if currently typing -> finish instantly
       if (typing && currentMessage) {
         clearTypingTimer();
         setDisplay(currentMessage.text);
@@ -424,9 +328,7 @@ export function DialogueProvider({
         return;
       }
 
-      // else move to next message or end
       const nextIndex = index + 1;
-      // before advancing, if current has showTimes, pin it (it will stay until next same-side message)
       pinIfNeeded(currentMessage);
 
       if (nextIndex < activeMessages.length) {
@@ -443,10 +345,7 @@ export function DialogueProvider({
       setDisplay("");
       setTyping(false);
       setIsActive(false);
-      setPinned({}); // clear pinned on finish
-
-      // restore provider background (if any) as the "current" state so next dialogue will start from provider image
-      // (we don't need to animate here because overlay will hide)
+      setPinned({});
       setCurrentBg(providerBgImage ?? null);
       setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
       setPrevBg(null);
@@ -465,7 +364,6 @@ export function DialogueProvider({
         if (!isActive || !activeMessages) return;
         e.preventDefault();
 
-        // if currently typing -> finish instantly
         if (typing && currentMessage) {
           clearTypingTimer();
           setDisplay(currentMessage.text);
@@ -473,9 +371,7 @@ export function DialogueProvider({
           return;
         }
 
-        // else move to next message or end
         const nextIndex = index + 1;
-        // before advancing, if current has showTimes, pin it (it will stay until next same-side message)
         pinIfNeeded(currentMessage);
 
         if (nextIndex < activeMessages.length) {
@@ -492,9 +388,7 @@ export function DialogueProvider({
         setDisplay("");
         setTyping(false);
         setIsActive(false);
-        setPinned({}); // clear pinned on finish
-
-        // restore provider background (if any)
+        setPinned({});
         setCurrentBg(providerBgImage ?? null);
         setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
         setPrevBg(null);
@@ -527,25 +421,17 @@ export function DialogueProvider({
     providerBgFilter,
   ]);
 
-  // When index or activeMessages change update current message typing
   useEffect(() => {
     if (!activeMessages) return;
-    if (index >= 0 && index < activeMessages.length) {
-      startTypingMessage(activeMessages, index);
-    }
-    // cleanup on unmount of dialogue
+    if (index >= 0 && index < activeMessages.length) startTypingMessage(activeMessages, index);
     return () => clearTypingTimer();
   }, [activeMessages, index, startTypingMessage]);
 
-  // the provided function (start a dialogue)
   const dialogue = useCallback(
     (messages: DialogueMessage[]) => {
       if (!messages || messages.length === 0) return Promise.resolve();
-
-      // map and validate characters
       const prepared = prepareMessages(messages);
 
-      // start from provider background by default (messages may override in startTypingMessage)
       setCurrentBg(providerBgImage ?? null);
       setCurrentBgFilter(providerBgFilter ?? DEFAULT_BG_FILTER);
       setPrevBg(null);
@@ -555,9 +441,8 @@ export function DialogueProvider({
       setActiveMessages(prepared);
       setIndex(0);
       setIsActive(true);
-      setPinned({}); // clear any previous pinned messages when starting a new dialogue
+      setPinned({});
 
-      // return a promise resolved when finished
       return new Promise<void>((res) => {
         resolvePromise.current = res;
       });
@@ -565,79 +450,51 @@ export function DialogueProvider({
     [speed, providerBgImage, providerBgFilter]
   );
 
-  // helper: resolve character UI props for the given message
-  // This function now:
-  //  1) parses the raw character key (maybe with :left/:right)
-  //  2) looks up the asset entry by base name
-  //  3) decides final side = explicit msg.forcedSide (if provided) OR parsed.forcedSide OR foundOn OR default left
   const resolveCurrentCharacter = (msg: InternalMessage | null) => {
-    if (!msg)
-      return {
-        name: "",
-        src: "",
-        side: "left" as "left" | "right",
-        resolvedMode: "default",
-      };
-
+    if (!msg) return { name: "", src: "", side: "left" as "left" | "right", resolvedMode: "default" };
     const parsed = parseCharacterKey(msg.charecter);
     const { entry, foundOn } = findCharacterEntryByName(parsed.name, msg.mode);
-
-    // final side resolution: msg.forcedSide (explicit field) > parsed.forcedSide (> foundOn) > 'left'
     const finalSide = (msg.forcedSide ?? parsed.forcedSide) ?? foundOn ?? "left";
-
-    return {
-      name: parsed.name,
-      mode: msg.mode ?? entry?.mode ?? "default",
-      src: entry?.src ?? "",
-      side: finalSide,
-    };
+    return { name: parsed.name, mode: msg.mode ?? entry?.mode ?? "default", src: entry?.src ?? "", side: finalSide };
   };
 
-  // helper: detect png (comic mode applies full-character only for pngs)
-  const isPngSrc = (src?: string) =>
-    !!src && src.toLowerCase().endsWith(".png");
+  const isPngSrc = (src?: string) => !!src && src.toLowerCase().endsWith(".png");
 
-  // UI render helper: render a "card" (avatar / bubble) for a message
+  const normalizeFontSize = (fs?: number | string) => {
+    if (fs === undefined) return undefined;
+    return typeof fs === "number" ? `${fs}px` : fs;
+  };
+
   const renderCharacterCard = (
     msg: InternalMessage,
-    options: {
-      forSide: "left" | "right";
-      isPinned?: boolean;
-      animate?: boolean;
-      comic?: boolean;
-    }
+    options: { forSide: "left" | "right"; isPinned?: boolean; animate?: boolean; comic?: boolean }
   ) => {
     const resolved = resolveCurrentCharacter(msg);
 
-    // compute effective alignment depending on rtl flag.
-    // NOTE: we do NOT move the character avatar positions — only the bubble/text/name alignment and bubble offset.
     const effectiveTextAlignClass = (() => {
-      // in LTR: left -> text-left, right -> text-right
-      // in RTL: left -> text-right, right -> text-left (flip only message/name alignment)
       if (!rtl) return options.forSide === "left" ? "text-left" : "text-right";
       return options.forSide === "left" ? "text-right" : "text-left";
     })();
 
     const transformOrigin = (() => {
-      // mirror transform origin for bubble animations when rtl is true
       if (!rtl) return options.forSide === "left" ? "left bottom" : "right bottom";
       return options.forSide === "left" ? "right bottom" : "left bottom";
     })();
 
     const isConsecutiveSame =
-      currentMessage &&
-      prevMessage &&
-      currentMessage.charecter === prevMessage.charecter;
+      currentMessage && prevMessage && currentMessage.charecter === prevMessage.charecter;
 
     const animateClass = options.animate ? (isConsecutiveSame ? "animate-change" : "animate-in") : "";
     const isComic = options.comic ?? mode === "comic";
 
-    // If comic and PNG available -> show full image + bubble positioned accordingly
+    const textInlineStyle: React.CSSProperties = {
+      fontSize: normalizeFontSize(msg.resolvedFontSize),
+      fontWeight: msg.resolvedFontWeight as React.CSSProperties["fontWeight"] | undefined,
+      color: msg.resolvedTextColor ?? undefined,
+    };
+
+    // Comic mode with PNG (full character)
     if (isComic && isPngSrc(resolved.src)) {
-      // For LTR:
-      //  - left side bubble uses `right: X` (bubble positioned inward toward center)
-      //  - right side bubble uses `left: X`
-      // For RTL we invert those bubble offsets so the bubble still points inward but text alignment flips.
       const posOffset =
         options.forSide === "left"
           ? rtl
@@ -647,33 +504,26 @@ export function DialogueProvider({
           ? { right: options.isPinned ? "1rem" : "1rem" }
           : { left: options.isPinned ? "1rem" : "1rem" };
 
-      // NOTE: changed: use bottom anchoring so bubble sits *above* the PNG and grows upward.
-      const bubbleStyle: React.CSSProperties =
-        {
-          background: msg.resolvedBgColor ?? "#fff",
-          color: msg.resolvedTextColor ?? "#000",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-          transformOrigin,
-          fontFamily: rtl
-            ? '"Vazirmatn", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial'
-            : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-          // anchor above the image so the bubble grows upward instead of downward (prevents covering face)
-          bottom: options.isPinned ? "calc(100% + 0.75rem)" : "calc(100% + 1rem)",
-          pointerEvents: options.isPinned ? "none" : "auto",
-          ...posOffset,
-          // ensure RTL mode doesn't unexpectedly flip text direction of bubble contents:
-          direction: rtl ? "rtl" : "ltr",
+      const bubbleStyle: React.CSSProperties = {
+        background: msg.resolvedBgColor ?? "#fff",
+        color: msg.resolvedTextColor ?? "#000",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+        transformOrigin,
+        fontFamily: rtl
+          ? '"Vazirmatn", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial'
+          : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+        bottom: options.isPinned ? "calc(100% + 0.75rem)" : "calc(100% + 1rem)",
+        pointerEvents: options.isPinned ? "none" : "auto",
+        ...posOffset,
+        direction: rtl ? "rtl" : "ltr",
+        maxHeight: "50vh",
+        overflowY: "auto",
+        boxSizing: "border-box",
+        paddingRight: "8px",
+        WebkitOverflowScrolling: "touch",
+        maxWidth: "100%",
+      };
 
-          // prevent bubble from growing indefinitely:
-          maxHeight: "50vh",
-          overflowY: "auto",
-          boxSizing: "border-box",
-          paddingRight: "8px",
-          WebkitOverflowScrolling: "touch",
-        };
-
-      // If this is the right side, flip the PNG visually (mirror) by applying scaleX(-1).
-      // We only flip the image element; bubble text remains unflipped.
       const imgStyle: React.CSSProperties = {
         maxHeight: options.isPinned ? "clamp(4rem, 70vh, 25rem)" : "clamp(4rem, 85vh, 25rem)",
         width: "auto",
@@ -686,23 +536,14 @@ export function DialogueProvider({
           key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
           className={`relative pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass} flex items-end`}
         >
-          <img
-            src={resolved.src}
-            alt={resolved.name}
-            className="comic-character-img object-contain"
-            style={imgStyle}
-          />
+          <img src={resolved.src} alt={resolved.name} className="comic-character-img object-contain" style={imgStyle} />
 
-          <div
-            className="bubble max-w-[45%] px-3 py-2.5 rounded-[14px] absolute"
-            style={bubbleStyle}
-            aria-hidden={options.isPinned ? "false" : "false"}
-          >
-            <div className={`text-[14px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>
-              {resolved.name}
-            </div>
-            <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}>
-              {/* For pinned show full message (no typing), for current allow typing via `display` state */}
+          <div className="bubble px-3 py-2.5 rounded-[14px] absolute" style={bubbleStyle}>
+            <div className={`text-[14px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>{resolved.name}</div>
+            <div
+              className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}
+              style={textInlineStyle}
+            >
               {options.isPinned ? msg.text : display}
             </div>
           </div>
@@ -720,25 +561,22 @@ export function DialogueProvider({
       : "right bottom";
 
     return (
-      <div
-        key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
-        className={`flex items-end gap-2.5 pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass}`}
-      >
+      <div key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`} className={`flex items-end gap-2.5 pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass}`}>
         {resolved.src ? (
           <img
             src={resolved.src}
             alt={resolved.name}
-            className="character-img w-[92px] h-[92px] object-cover rounded-full"
+            className="character-img object-cover rounded-full"
             style={isPngSrc(resolved.src) && options.forSide === "right" ? { transform: "scaleX(-1)" } : undefined}
           />
         ) : (
-          <div className="w-[92px] h-[92px] rounded-full inline-flex items-center justify-center font-bold bg-gray-300 character-img">
+          <div className="character-img inline-flex items-center justify-center font-bold bg-gray-300">
             {resolved.name ? resolved.name[0] : ""}
           </div>
         )}
 
         <div
-          className="bubble max-w-[65%] px-3 py-2.5 rounded-[14px]"
+          className="bubble px-3 py-2.5 rounded-[14px]"
           style={{
             background: msg.resolvedBgColor ?? "#fff",
             color: msg.resolvedTextColor ?? "#000",
@@ -749,19 +587,19 @@ export function DialogueProvider({
               : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
             pointerEvents: options.isPinned ? "none" : "auto",
             direction: rtl ? "rtl" : "ltr",
-
-            // Prevent arcade bubble from growing too tall and overlapping; allow internal scroll.
             maxHeight: "40vh",
             overflowY: "auto",
             boxSizing: "border-box",
             paddingRight: "8px",
             WebkitOverflowScrolling: "touch",
+            maxWidth: "100%",
           }}
         >
-          <div className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}>
-            {resolved.name}
-          </div>
-          <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}>
+          <div className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}>{resolved.name}</div>
+          <div
+            className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}
+            style={textInlineStyle}
+          >
             {options.isPinned ? msg.text : display}
           </div>
         </div>
@@ -769,22 +607,59 @@ export function DialogueProvider({
     );
   };
 
-  // UI render of message bubble(s)
+  const renderNarrator = (msg: InternalMessage, options?: { isPinned?: boolean }) => {
+    const bubbleStyle: React.CSSProperties = {
+      maxWidth: "min(1100px, 92%)",
+      margin: "0 auto",
+      padding: "10px 14px",
+      borderRadius: "12px",
+      borderStyle: "dashed",
+      borderWidth: "2px",
+      background: "rgba(18,18,20,0.76)",
+      color: "#f6f7f9",
+      boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
+      pointerEvents: "none",
+      direction: rtl ? "rtl" : "ltr",
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+    };
+
+    const nameStyle: React.CSSProperties = {
+      fontSize: "13px",
+      opacity: 0.85,
+      fontWeight: 700,
+      alignSelf: rtl ? "flex-end" : "flex-start",
+    };
+
+    const textStyle: React.CSSProperties = {
+      fontSize: normalizeFontSize(msg.resolvedFontSize) ?? "16px",
+      lineHeight: 1.25,
+      fontWeight: msg.resolvedFontWeight as React.CSSProperties["fontWeight"] | undefined,
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word",
+    };
+
+    return (
+      <div className={`narrator-banner ${options?.isPinned ? "pinned" : "current"}`} style={{ width: "100%", display: "flex", justifyContent: "center", pointerEvents: "none" }} key={`ravi-${options?.isPinned ? "pinned" : "cur"}`}>
+        <div style={bubbleStyle} aria-live="polite">
+          <div style={nameStyle}>پیام راوی</div>
+          <div style={textStyle}>{options?.isPinned ? msg.text : display}</div>
+        </div>
+      </div>
+    );
+  };
+
   const currentChar = resolveCurrentCharacter(currentMessage);
-
-  // decide animation class: if previous message was same character name => consecutive animation
-  const isConsecutiveSame =
-    currentMessage &&
-    prevMessage &&
-    currentMessage.charecter === prevMessage.charecter;
-
-  // prepare pinned/current render items for each side
+  const isConsecutiveSame = currentMessage && prevMessage && currentMessage.charecter === prevMessage.charecter;
   const leftPinned = pinned.left ?? null;
   const rightPinned = pinned.right ?? null;
-  const leftCurrent = currentChar.side === "left" && currentMessage ? currentMessage : null;
-  const rightCurrent = currentChar.side === "right" && currentMessage ? currentMessage : null;
+  const topPinned = pinned.top ?? null;
 
-  // helper to compute opacity from filter.fade (fade=0 => opacity 1)
+  const topCurrent = currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() === "ravi" ? currentMessage : null;
+  const leftCurrent = currentChar.side === "left" && currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() !== "ravi" ? currentMessage : null;
+  const rightCurrent = currentChar.side === "right" && currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() !== "ravi" ? currentMessage : null;
+
   const opacityFromFade = (f?: number) => {
     const fade = typeof f === "number" ? f : 0;
     const op = 1 - Math.min(1, Math.max(0, fade));
@@ -796,21 +671,21 @@ export function DialogueProvider({
       {children}
       {isActive && (
         <div
-          /* overlay: moved Tailwind classes inline, kept backdrop filter raw via style */
-          className={`fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center ${mode === "comic" ? "comic-mode" : ""}`}
+          className={`dialogue-overlay fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center ${mode === "comic" ? "comic-mode" : ""}`}
           aria-hidden={!isActive}
           style={{
             backdropFilter: "blur(4px) saturate(95%)",
             WebkitBackdropFilter: "blur(4px)",
           }}
         >
-          {/* Background layers: prev (fading out) + current (visible). These sit below the gradient to allow vignetting. */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 9998 }}
-          >
-            {/* prev layer (fading out) */}
+          {/* top narrator slot */}
+          <div style={{ position: "absolute", top: 18, left: 0, right: 0, zIndex: 10002, display: "flex", justifyContent: "center", pointerEvents: "none", padding: "0 12px" }}>
+            {topPinned ? renderNarrator(topPinned, { isPinned: true }) : null}
+            {topCurrent ? renderNarrator(topCurrent, { isPinned: false }) : null}
+          </div>
+
+          {/* Background layers */}
+          <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ zIndex: 9998 }}>
             {prevBg ? (
               <div
                 className="dialogue-bg-layer prev"
@@ -822,14 +697,12 @@ export function DialogueProvider({
                   backgroundPosition: "center center",
                   backgroundRepeat: "no-repeat",
                   transition: `opacity ${BG_FADE_DURATION}ms ease`,
-                  // when prevVisible true -> show with its configured opacity; otherwise hide (0)
                   opacity: prevVisible ? opacityFromFade(prevBgFilter?.fade) : 0,
                   filter: prevBgFilter && typeof prevBgFilter.blur === "number" && prevBgFilter.blur > 0 ? `blur(${prevBgFilter.blur}px)` : undefined,
                 }}
               />
             ) : null}
 
-            {/* current layer (fading in instantly if newly set) */}
             {currentBg ? (
               <div
                 className="dialogue-bg-layer cur"
@@ -841,7 +714,6 @@ export function DialogueProvider({
                   backgroundPosition: "center center",
                   backgroundRepeat: "no-repeat",
                   transition: `opacity ${BG_FADE_DURATION}ms ease`,
-                  // current uses its filter-derived opacity (fade).
                   opacity: opacityFromFade(currentBgFilter?.fade),
                   filter: currentBgFilter && typeof currentBgFilter.blur === "number" && currentBgFilter.blur > 0 ? `blur(${currentBgFilter.blur}px)` : undefined,
                 }}
@@ -849,10 +721,8 @@ export function DialogueProvider({
             ) : null}
           </div>
 
-          {/* gradient: adds .comic modifier when comic mode */}
           <div className={`dialogue-gradient ${mode === "comic" ? "comic" : ""}`} />
 
-          {/* container: for comic we use full inset so character PNGs can be large; for arcade we keep bottom anchored */}
           <div
             className={
               mode === "comic"
@@ -862,35 +732,31 @@ export function DialogueProvider({
             aria-live="polite"
             style={{ maxWidth: "none" }}
           >
-            {/* Left slot: may render pinned (older) + current (typing) */}
+            {/* Left slot */}
             <div
               data-side="left"
-              className={`w-auto max-w-[48%] flex flex-col items-end min-h-[120px] ${
+              className={`w-auto flex flex-col items-end min-h-[120px] ${
                 (leftPinned || leftCurrent)
                   ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
                   : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
               } ${isConsecutiveSame && currentChar.side === "left" ? "consecutive" : ""}`}
+              style={{ maxWidth: "calc(50% - 8px)" }}
             >
-              {/* pinned left (if exists) - show first so current (typing) renders after */}
               {leftPinned ? renderCharacterCard(leftPinned, { forSide: "left", isPinned: true, animate: false, comic: mode === "comic" }) : null}
-
-              {/* current left (typing) */}
               {leftCurrent ? renderCharacterCard(leftCurrent, { forSide: "left", isPinned: false, animate: true, comic: mode === "comic" }) : null}
             </div>
 
-            {/* Right slot: may render pinned (older) + current (typing) */}
+            {/* Right slot */}
             <div
               data-side="right"
-              className={`w-auto max-w-[48%] flex flex-col items-start min-h-[120px] ${
+              className={`w-auto flex flex-col items-start min-h-[120px] ${
                 (rightPinned || rightCurrent)
                   ? "opacity-100 pointer-events-auto translate-y-0 transition-all duration-[200ms] ease-[cubic-bezier(.2,.9,.2,1)]"
                   : "opacity-0 pointer-events-none translate-y-4 transition-all duration-[180ms] ease-linear"
               } ${isConsecutiveSame && currentChar.side === "right" ? "consecutive" : ""}`}
+              style={{ maxWidth: "calc(50% - 8px)" }}
             >
-              {/* pinned right */}
               {rightPinned ? renderCharacterCard(rightPinned, { forSide: "right", isPinned: true, animate: false, comic: mode === "comic" }) : null}
-
-              {/* current right (typing) */}
               {rightCurrent ? renderCharacterCard(rightCurrent, { forSide: "right", isPinned: false, animate: true, comic: mode === "comic" }) : null}
             </div>
           </div>
