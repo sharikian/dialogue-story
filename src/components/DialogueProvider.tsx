@@ -17,6 +17,8 @@ type InternalMessage = DialogueMessage & {
   resolvedTypeSpeed: number;
   resolvedTextColor: string;
   resolvedBgColor: string;
+  resolvedFontSize?: number | string;
+  resolvedFontWeight?: number | string;
 };
 
 type PinnedMap = {
@@ -166,6 +168,8 @@ export function DialogueProvider({
       resolvedTypeSpeed: m.typeSpeed ?? speed,
       resolvedTextColor: m.textColor ?? "#000000",
       resolvedBgColor: m.bgColor ?? "#ffffff",
+      resolvedFontSize: m.fontSize,
+      resolvedFontWeight: m.fontWeight,
     }));
 
   const clearTypingTimer = () => {
@@ -263,7 +267,6 @@ export function DialogueProvider({
         });
       }
 
-      // If narrator (ravi), do not remove pinned.top here; narrator stays until explicitly cleared by advancing message logic
       setCurrentMessage(msg);
       setPrevMessage(idx > 0 ? msgs[idx - 1] : null);
       setDisplay("");
@@ -291,7 +294,6 @@ export function DialogueProvider({
     if (!msg.showTimes) return;
 
     const parsed = parseCharacterKey(msg.charecter);
-    // special narrator name
     if (parsed.name && parsed.name.toLowerCase() === "ravi") {
       setPinned((p) => ({ ...p, top: { ...msg } }));
       return;
@@ -447,6 +449,11 @@ export function DialogueProvider({
 
   const isPngSrc = (src?: string) => !!src && src.toLowerCase().endsWith(".png");
 
+  const normalizeFontSize = (fs?: number | string) => {
+    if (fs === undefined) return undefined;
+    return typeof fs === "number" ? `${fs}px` : fs;
+  };
+
   const renderCharacterCard = (
     msg: InternalMessage,
     options: { forSide: "left" | "right"; isPinned?: boolean; animate?: boolean; comic?: boolean }
@@ -469,6 +476,13 @@ export function DialogueProvider({
     const animateClass = options.animate ? (isConsecutiveSame ? "animate-change" : "animate-in") : "";
     const isComic = options.comic ?? mode === "comic";
 
+    const textInlineStyle: React.CSSProperties = {
+      fontSize: normalizeFontSize(msg.resolvedFontSize),
+      fontWeight: msg.resolvedFontWeight as React.CSSProperties["fontWeight"] | undefined,
+      color: msg.resolvedTextColor ?? undefined,
+    };
+
+    // Comic mode with PNG (full character)
     if (isComic && isPngSrc(resolved.src)) {
       const posOffset =
         options.forSide === "left"
@@ -515,7 +529,10 @@ export function DialogueProvider({
 
           <div className="bubble px-3 py-2.5 rounded-[14px] absolute" style={bubbleStyle}>
             <div className={`text-[14px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>{resolved.name}</div>
-            <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}>
+            <div
+              className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}
+              style={textInlineStyle}
+            >
               {options.isPinned ? msg.text : display}
             </div>
           </div>
@@ -523,6 +540,7 @@ export function DialogueProvider({
       );
     }
 
+    // Arcade / fallback: circular avatar + bubble
     const arcadeTransformOrigin = rtl
       ? options.forSide === "left"
         ? "right bottom"
@@ -567,7 +585,10 @@ export function DialogueProvider({
           }}
         >
           <div className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}>{resolved.name}</div>
-          <div className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}>
+          <div
+            className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}
+            style={textInlineStyle}
+          >
             {options.isPinned ? msg.text : display}
           </div>
         </div>
@@ -601,8 +622,9 @@ export function DialogueProvider({
     };
 
     const textStyle: React.CSSProperties = {
-      fontSize: "16px",
+      fontSize: normalizeFontSize(msg.resolvedFontSize) ?? "16px",
       lineHeight: 1.25,
+      fontWeight: msg.resolvedFontWeight as React.CSSProperties["fontWeight"] | undefined,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
     };
@@ -624,7 +646,6 @@ export function DialogueProvider({
   const topPinned = pinned.top ?? null;
 
   const topCurrent = currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() === "ravi" ? currentMessage : null;
-  // avoid rendering ravi in side slots
   const leftCurrent = currentChar.side === "left" && currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() !== "ravi" ? currentMessage : null;
   const rightCurrent = currentChar.side === "right" && currentMessage && parseCharacterKey(currentMessage.charecter).name.toLowerCase() !== "ravi" ? currentMessage : null;
 

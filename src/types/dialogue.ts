@@ -34,6 +34,19 @@ export type DialogueMessage = {
   bgImage?: string | null;
 
   /**
+   * Optional per-message font size.
+   * - number: treated as pixels (e.g. 18 -> "18px")
+   * - string: any valid CSS font-size value (e.g. "1.1rem", "18px")
+   */
+  fontSize?: number | string;
+
+  /**
+   * Optional per-message font weight.
+   * Accepts numeric weights (400,700) or strings ("bold","600").
+   */
+  fontWeight?: number | string;
+
+  /**
    * Optional background image filter for this message.
    * Applies only when bgImage is set (or when provider bgImage is active).
    * If omitted the provider's bgFilter (or defaults) are used.
