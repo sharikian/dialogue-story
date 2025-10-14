@@ -49,6 +49,19 @@ const parseCharacterKey = (raw: string): { name: string; forcedSide?: "left" | "
   return { name: base, forcedSide: undefined };
 };
 
+/**
+ * Small helper to turn a character/name into an id-safe string
+ * e.g. "Eddy (angry)" -> "eddy-angry"
+ */
+const idSafe = (s?: string) =>
+  (s ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+
 export function DialogueProvider({
   children,
   leftCharacters: propLeftCharacters = [],
@@ -543,6 +556,13 @@ export function DialogueProvider({
       color: msg.resolvedTextColor ?? undefined,
     };
 
+    // Provide sanitized id-friendly name for id attributes:
+    const safeName = idSafe(resolved.name || msg.charecter);
+
+    // Compose base id fragments
+    const state = options.isPinned ? "pinned" : "current";
+    const side = options.forSide;
+
     // Comic mode with PNG (full character)
     if (isComic && isPngSrc(resolved.src)) {
       const posOffset =
@@ -588,11 +608,22 @@ export function DialogueProvider({
         >
           <img src={resolved.src} alt={resolved.name} className="comic-character-img object-contain" style={imgStyle} />
 
-          <div className="bubble px-3 py-2.5 rounded-[14px] absolute" style={bubbleStyle}>
-            <div className={`text-[14px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}>{resolved.name}</div>
+          <div
+            className="bubble px-3 py-2.5 rounded-[14px] absolute"
+            style={bubbleStyle}
+            // bubble-level id for testing if needed
+            id={`dial-bubble-${side}-${state}-${safeName}`}
+          >
+            <div
+              className={`text-[14px] font-bold opacity-90 mb-1.5 ${effectiveTextAlignClass} name`}
+              id={`dial-charecter-title-${side}-${state}-${safeName}`}
+            >
+              {resolved.name}
+            </div>
             <div
               className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}
               style={textInlineStyle}
+              id={`dial-charecter-text-${side}-${state}-${safeName}`}
             >
               {options.isPinned ? msg.text : display}
             </div>
@@ -611,16 +642,24 @@ export function DialogueProvider({
       : "right bottom";
 
     return (
-      <div key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`} className={`flex items-end gap-2.5 pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass}`}>
+      <div
+        key={`${msg.charecter}-${options.isPinned ? "pinned" : "cur"}`}
+        className={`flex items-end gap-2.5 pointer-events-${options.isPinned ? "none" : "auto"} ${animateClass}`}
+        id={`dial-char-wrapper-${side}-${state}-${safeName}`}
+      >
         {resolved.src ? (
           <img
             src={resolved.src}
             alt={resolved.name}
             className="character-img object-cover rounded-full"
             style={isPngSrc(resolved.src) && options.forSide === "right" ? { transform: "scaleX(-1)" } : undefined}
+            id={`dial-charecter-avatar-${side}-${state}-${safeName}`}
           />
         ) : (
-          <div className="character-img inline-flex items-center justify-center font-bold bg-gray-300">
+          <div
+            className="character-img inline-flex items-center justify-center font-bold bg-gray-300"
+            id={`dial-charecter-avatar-${side}-${state}-${safeName}`}
+          >
             {resolved.name ? resolved.name[0] : ""}
           </div>
         )}
@@ -644,11 +683,18 @@ export function DialogueProvider({
             WebkitOverflowScrolling: "touch",
             maxWidth: "100%",
           }}
+          id={`dial-bubble-${side}-${state}-${safeName}`}
         >
-          <div className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}>{resolved.name}</div>
+          <div
+            className={`${effectiveTextAlignClass} text-[14px] font-bold opacity-90 mb-1.5 name`}
+            id={`dial-charecter-title-${side}-${state}-${safeName}`}
+          >
+            {resolved.name}
+          </div>
           <div
             className={`text ${options.isPinned ? "" : typing ? "typing" : "done"} text-[20px] leading-[1.2] whitespace-pre-wrap break-words`}
             style={textInlineStyle}
+            id={`dial-charecter-text-${side}-${state}-${safeName}`}
           >
             {options.isPinned ? msg.text : display}
           </div>
@@ -690,11 +736,23 @@ export function DialogueProvider({
       wordBreak: "break-word",
     };
 
+    // safe id suffix (ravi is the narrator)
+    const state = options?.isPinned ? "pinned" : "current";
+
     return (
-      <div className={`narrator-banner ${options?.isPinned ? "pinned" : "current"}`} style={{ width: "100%", display: "flex", justifyContent: "center", pointerEvents: "none" }} key={`ravi-${options?.isPinned ? "pinned" : "cur"}`}>
+      <div
+        className={`narrator-banner ${options?.isPinned ? "pinned" : "current"}`}
+        style={{ width: "100%", display: "flex", justifyContent: "center", pointerEvents: "none" }}
+        key={`ravi-${options?.isPinned ? "pinned" : "cur"}`}
+        id={`dial-ravi-wrapper-${state}`}
+      >
         <div style={bubbleStyle} aria-live="polite">
-          <div style={nameStyle}>پیام راوی</div>
-          <div style={textStyle}>{options?.isPinned ? msg.text : display}</div>
+          <div style={nameStyle} id={`dial-ravi-name-${state}`}>
+            پیام راوی
+          </div>
+          <div style={textStyle} id={`dial-ravi-text-${state}`}>
+            {options?.isPinned ? msg.text : display}
+          </div>
         </div>
       </div>
     );
@@ -727,6 +785,7 @@ export function DialogueProvider({
       {children}
       {isActive && (
         <div
+          id="dial-overlay"
           className={`dialogue-overlay fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center ${mode === "comic" ? "comic-mode" : ""}`}
           aria-hidden={!isActive}
           style={{
@@ -744,6 +803,7 @@ export function DialogueProvider({
           <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ zIndex: 9998 }}>
             {prevBg ? (
               <div
+                id="dial-bg-prev"
                 className="dialogue-bg-layer prev"
                 style={{
                   position: "absolute",
@@ -761,6 +821,7 @@ export function DialogueProvider({
 
             {currentBg ? (
               <div
+                id="dial-bg-cur"
                 className="dialogue-bg-layer cur"
                 style={{
                   position: "absolute",
@@ -830,6 +891,7 @@ export function DialogueProvider({
               }}
             >
               <button
+                id="dial-skip-button"
                 className="skip-button"
                 onClick={handleSkipClick}
                 aria-label="Skip dialogue"
