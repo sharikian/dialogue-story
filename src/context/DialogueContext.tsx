@@ -50,6 +50,7 @@ export type DialogueProviderProps = {
    * When true, shows a small center-bottom "Skip" button that ends the dialogue immediately.
    */
   canSkip?: boolean;
+  skipMessage?: string;
 };
 
 export type DialogueContextValue = {

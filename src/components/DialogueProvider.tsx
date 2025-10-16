@@ -75,6 +75,7 @@ export function DialogueProvider({
   bgFilter: providerBgFilter = DEFAULT_BG_FILTER,
   activeRedo = false,
   canSkip = false,
+  skipMessage = "Skip"
 }: DialogueProviderProps) {
   const [activeMessages, setActiveMessages] = useState<InternalMessage[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -730,7 +731,6 @@ export function DialogueProvider({
 
     const textStyle: React.CSSProperties = {
       fontSize: normalizeFontSize(msg.resolvedFontSize) ?? "16px",
-      lineHeight: 1.25,
       fontWeight: msg.resolvedFontWeight as React.CSSProperties["fontWeight"] | undefined,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
@@ -896,7 +896,7 @@ export function DialogueProvider({
                 onClick={handleSkipClick}
                 aria-label="Skip dialogue"
               >
-                Skip
+                {skipMessage}
               </button>
             </div>
           ) : null}

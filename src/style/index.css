@@ -156,8 +156,8 @@
     overflow-y: auto !important;
   }
 
-  .comic-mode .bubble .text { font-size: 16px !important; line-height: 1.15 !important; }
-  .comic-mode .bubble .name { font-size: 12px !important; }
+  .comic-mode .bubble .text { font-size: 16px ; }
+  .comic-mode .bubble .name { font-size: 12px ; }
   .comic-mode .comic-character-img { max-height: 60vh !important; }
 }
 
